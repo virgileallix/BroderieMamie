@@ -81,6 +81,7 @@
         <div>
           <h1 id="viewTitle">Toutes mes broderies</h1>
           <p class="muted" id="viewSub"></p>
+          <button class="link-btn bulk-btn hidden" id="btnBulkTag"><svg class="icon"><use href="#i-plus"/></svg><span id="bulkLbl">Ajouter un mot-clé à toutes ces broderies</span></button>
         </div>
         <div class="size-picker" role="group" aria-label="Taille des images">
           <span class="muted">Images</span>
@@ -292,6 +293,20 @@
         <button class="btn btn-secondary btn-lg" data-close>Fermer</button>
       </div>
     </div>
+  </dialog>
+
+  <!-- ============ Mot-clé pour plusieurs broderies ============ -->
+  <dialog class="modal modal-sm" id="bulkDlg" aria-labelledby="bulkTitle">
+    <form class="modal-body" id="bulkForm" method="dialog">
+      <h2 id="bulkTitle">Ajouter un mot-clé</h2>
+      <p class="muted" id="bulkText"></p>
+      <input id="bulkInput" class="bulk-input" placeholder="ex. Noël, anges, bébé…" maxlength="40" list="bulkList" aria-label="Mot-clé">
+      <datalist id="bulkList"></datalist>
+      <div class="modal-actions">
+        <button class="btn btn-secondary btn-lg" type="button" id="bulkCancel">Annuler</button>
+        <button class="btn btn-primary btn-lg" type="submit">Ajouter</button>
+      </div>
+    </form>
   </dialog>
 
   <!-- ============ Confirmation ============ -->

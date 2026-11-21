@@ -341,6 +341,7 @@ dependencies = [
 name = "broderie-core"
 version = "1.0.0"
 dependencies = [
+ "jpeg-encoder",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -2154,6 +2155,12 @@ dependencies = [
  "quote",
  "syn 2.0.119",
 ]
+
+[[package]]
+name = "jpeg-encoder"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b454d911ac55068f53495488d8ccd0646eaa540c033a28ee15b07838afafb01f"
 
 [[package]]
 name = "js-sys"

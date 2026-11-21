@@ -23,7 +23,7 @@ const INDEX: &str = "bibliotheque.json";
 const MOTIFS: &str = "Motifs";
 const TRASH: &str = "Corbeille";
 const THUMBS: &str = "Aperçus";
-const THUMB_SIZE: u32 = 360;
+const THUMB_SIZE: u32 = 256;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -165,6 +165,68 @@ pub struct EntryUpdate {
     pub favorite: Option<bool>,
 }
 
+/// Un import en cours (voir `Library::import_step`).
+pub struct ImportJob {
+    todo: std::vec::IntoIter<Source>,
+    pub total: usize,
+    pub done: usize,
+    report: ImportReport,
+}
+
+/// Index pour retrouver vite une broderie : par empreinte de fichier, de dessin, et par taille
+/// (cases de 2 mm) pour la ressemblance. Indispensable avec des dizaines de milliers de motifs.
+struct Index {
+    by_file: std::collections::HashMap<String, usize>,
+    by_design: std::collections::HashMap<String, usize>,
+    by_size: std::collections::HashMap<(i32, i32), Vec<usize>>,
+}
+
+const SIZE_CELL: f32 = 2.0;
+
+fn size_cell(w: f32, h: f32) -> (i32, i32) {
+    ((w / SIZE_CELL).floor() as i32, (h / SIZE_CELL).floor() as i32)
+}
+
+impl Index {
+    fn build(entries: &[Entry]) -> Self {
+        let mut idx = Index { by_file: Default::default(), by_design: Default::default(), by_size: Default::default() };
+        for i in 0..entries.len() {
+            idx.insert(entries, i);
+        }
+        idx
+    }
+
+    fn insert(&mut self, entries: &[Entry], i: usize) {
+        let e = &entries[i];
+        self.by_file.entry(e.file_hash.clone()).or_insert(i);
+        if let Some(h) = &e.design_hash {
+            // On retient la meilleure version (le PES) pour un même dessin.
+            let slot = self.by_design.entry(h.clone()).or_insert(i);
+            if entries[*slot].preference() > e.preference() {
+                *slot = i;
+            }
+        }
+        if e.shape_bits.is_some() {
+            self.by_size.entry(size_cell(e.width_mm, e.height_mm)).or_default().push(i);
+        }
+    }
+
+    /// Les broderies de taille voisine (assez large pour la tolérance de `same_motif`).
+    fn near(&self, w: f32, h: f32) -> impl Iterator<Item = usize> + '_ {
+        let tol = 1.0f32.max(w.max(h) * 0.02);
+        let r = (tol / SIZE_CELL).ceil() as i32 + 1;
+        let (cw, chh) = size_cell(w, h);
+        (cw - r..=cw + r)
+            .flat_map(move |x| (chh - r..=chh + r).map(move |y| (x, y)))
+            .filter_map(|c| self.by_size.get(&c))
+            .flat_map(|v| v.iter().copied())
+    }
+
+    fn find_similar(&self, entries: &[Entry], w: f32, h: f32, stitches: usize, shape: &[u8]) -> Option<usize> {
+        self.near(w, h).find(|&i| same_motif(&entries[i], w, h, stitches, shape))
+    }
+}
+
 pub struct Library {
     root: PathBuf,
     entries: Vec<Entry>,
@@ -176,30 +238,67 @@ fn pair(a: &str, b: &str) -> (String, String) {
 }
 
 /// Un fichier à importer : soit un fichier du disque, soit un fichier sorti d'un .zip.
-enum Source {
-    Path(PathBuf, String),
-    Bytes(String, Vec<u8>, String),
+pub struct Source {
+    kind: SourceKind,
+    /// Le dossier de la bibliothèque où ranger la broderie (nom du dossier ou du .zip ajouté).
+    folder: String,
+    /// Mots-clés tirés des sous-dossiers (« Noël/Anges/ange1.pes » → Noël, Anges).
+    tags: Vec<String>,
+}
+
+enum SourceKind {
+    Path(PathBuf),
+    /// Un fichier dans un .zip : lu seulement au moment de le ranger (pas tout en mémoire).
+    Zip(PathBuf, usize, String),
 }
 
 impl Source {
     fn name(&self) -> String {
-        match self {
-            Source::Path(p, _) => p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
-            Source::Bytes(n, _, _) => n.clone(),
+        match &self.kind {
+            SourceKind::Path(p) => p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            SourceKind::Zip(_, _, n) => n.clone(),
         }
     }
-    /// Le dossier de la bibliothèque où ranger la broderie.
-    fn folder(&self) -> String {
-        match self {
-            Source::Path(_, f) | Source::Bytes(_, _, f) => f.clone(),
+    fn bytes(&mut self) -> io::Result<Vec<u8>> {
+        match &mut self.kind {
+            SourceKind::Path(p) => fs::read(p),
+            SourceKind::Zip(zip, i, _) => {
+                let mut z = zip::ZipArchive::new(fs::File::open(&zip)?).map_err(io::Error::other)?;
+                let mut f = z.by_index(*i).map_err(io::Error::other)?;
+                let mut b = Vec::with_capacity(f.size().min(64 << 20) as usize);
+                f.read_to_end(&mut b)?;
+                Ok(b)
+            }
         }
     }
-    fn bytes(self) -> io::Result<Vec<u8>> {
-        match self {
-            Source::Path(p, _) => fs::read(p),
-            Source::Bytes(_, b, _) => Ok(b),
-        }
-    }
+}
+
+/// Noms de dossiers qui ne disent rien du motif : on n'en fait pas des mots-clés.
+const NOT_TAGS: [&str; 16] = [
+    "pes", "pec", "jef", "sew", "exp", "dst", "hus", "vip", "vp3", "pv3", "broderie", "broderies",
+    "motifs", "designs", "embroidery", "nouveau dossier",
+];
+
+fn tag_of(part: &str) -> Option<String> {
+    let t = part.replace('_', " ");
+    let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
+    let low = t.to_lowercase();
+    let useless = t.is_empty()
+        || t.chars().all(|c| !c.is_alphabetic())
+        || NOT_TAGS.contains(&low.as_str())
+        || low.starts_with("new folder")
+        || t.chars().count() > 40;
+    (!useless).then_some(t)
+}
+
+/// Mots-clés tirés d'un chemin relatif (« Noël/Anges » → Noël, Anges).
+fn tags_of_path(rel: &Path) -> Vec<String> {
+    rel.components()
+        .filter_map(|c| match c {
+            std::path::Component::Normal(s) => tag_of(&s.to_string_lossy()),
+            _ => None,
+        })
+        .collect()
 }
 
 /// Nom de dossier (ou de .zip) utilisable comme dossier de la bibliothèque.
@@ -267,7 +366,9 @@ impl Library {
                     .and_then(|b| design::parse_named(&b, &e.file_name).map_err(|_| ()))
                 {
                     if thumb_missing {
-                        if let Some(png) = render::render_png(&d, THUMB_SIZE) {
+                        // Les anciennes versions faisaient des aperçus PNG, plus lourds.
+                        let _ = fs::remove_file(lib.root.join(THUMBS).join(format!("{}.png", e.id)));
+                        if let Some(png) = render::render_thumb_jpeg(&d, THUMB_SIZE) {
                             let _ = fs::write(lib.thumb_path(&e.id), png);
                         }
                     }
@@ -296,7 +397,7 @@ impl Library {
         &self.entries
     }
     pub fn thumb_path(&self, id: &str) -> PathBuf {
-        self.root.join(THUMBS).join(format!("{id}.png"))
+        self.root.join(THUMBS).join(format!("{id}.jpg"))
     }
     pub fn file_path(&self, e: &Entry) -> PathBuf {
         self.motif_path(&e.file_name)
@@ -315,7 +416,7 @@ impl Library {
         let mut distinct: Vec<_> = self.distinct.iter().cloned().collect();
         distinct.sort();
         let idx = IndexFile { version: 1, entries: self.entries.clone(), distinct };
-        let json = serde_json::to_vec_pretty(&idx).map_err(io::Error::other)?;
+        let json = serde_json::to_vec(&idx).map_err(io::Error::other)?;
         let tmp = self.root.join(format!("{INDEX}.tmp"));
         fs::write(&tmp, json)?;
         fs::rename(tmp, self.root.join(INDEX))
@@ -327,20 +428,37 @@ impl Library {
         design::parse_named(&bytes, &e.file_name).map_err(|e| e.to_string())
     }
 
-    /// Ajoute des fichiers, des dossiers entiers ou des .zip.
-    /// Les doublons (même fichier, ou même dessin enregistré autrement) sont ignorés.
+    /// Ajoute des fichiers, des dossiers entiers ou des .zip, en une fois.
     pub fn import(&mut self, paths: &[PathBuf], mut progress: impl FnMut(usize, usize, &str)) -> ImportReport {
+        let mut job = Library::prepare_import(paths);
+        while !self.import_step(&mut job, usize::MAX, &mut progress) {}
+        self.finish_import(job)
+    }
+
+    /// Prépare un import : liste les fichiers (sans toucher à la bibliothèque).
+    pub fn prepare_import(paths: &[PathBuf]) -> ImportJob {
         let mut report = ImportReport::default();
         let mut todo = Vec::new();
         for p in paths {
-            collect(p, None, &mut todo, &mut report);
+            collect(p, &mut todo, &mut report);
         }
+        ImportJob { total: todo.len(), todo: todo.into_iter(), done: 0, report }
+    }
 
-        let total = todo.len();
-        for (k, src) in todo.into_iter().enumerate() {
+    /// Importe au plus `max` fichiers ; renvoie `true` quand tout est fait. Entre deux étapes,
+    /// le reste du logiciel peut continuer à travailler.
+    pub fn import_step(&mut self, job: &mut ImportJob, max: usize, progress: &mut impl FnMut(usize, usize, &str)) -> bool {
+        let mut idx = Index::build(&self.entries);
+        for _ in 0..max {
+            let Some(mut src) = job.todo.next() else {
+                progress(job.total, job.total, "");
+                return true;
+            };
             let original = src.name();
-            let folder = src.folder();
-            progress(k, total, &original);
+            let k = job.done;
+            job.done += 1;
+            progress(k, job.total, &original);
+            let report = &mut job.report;
             let bytes = match src.bytes() {
                 Ok(b) => b,
                 Err(e) => {
@@ -349,31 +467,29 @@ impl Library {
                 }
             };
             let fh = design::file_hash(&bytes);
-            if let Some(same) = self.entries.iter().find(|e| e.file_hash == fh) {
-                report.duplicates.push(Duplicate::of(original, same));
+            if let Some(&i) = idx.by_file.get(&fh) {
+                report.duplicates.push(Duplicate::of(original, &self.entries[i]));
                 continue;
             }
             let parsed = design::parse_named(&bytes, &original);
             let dh = parsed.as_ref().ok().map(|d| d.design_hash());
             let mut similar_to = None;
             if let Ok(d) = &parsed {
+                let same_points = dh.as_ref().and_then(|h| idx.by_design.get(h)).copied();
                 // Exactement les mêmes points, dans un format qui n'est pas meilleur : rien à ajouter.
-                if let Some(e) = self.entries.iter().find(|e| {
-                    e.design_hash.as_deref() == dh.as_deref() && d.format.preference() >= e.preference()
-                }) {
-                    report.duplicates.push(Duplicate::of(original, e));
+                if let Some(i) = same_points.filter(|&i| d.format.preference() >= self.entries[i].preference()) {
+                    report.duplicates.push(Duplicate::of(original, &self.entries[i]));
                     continue;
                 }
                 // Le même motif autrement (autre format, autre version) : on l'ajoute, mais on le signale.
                 let shape = d.shape();
-                similar_to = self
-                    .entries
-                    .iter()
-                    .find(|e| e.design_hash.as_deref() == dh.as_deref() || same_motif(e, d.width_mm(), d.height_mm(), d.stitch_count, &shape))
-                    .map(|e| (e.name.clone(), e.folder.clone()));
+                similar_to = same_points
+                    .or_else(|| idx.find_similar(&self.entries, d.width_mm(), d.height_mm(), d.stitch_count, &shape))
+                    .map(|i| (self.entries[i].name.clone(), self.entries[i].folder.clone()));
             }
-            match self.add(&original, &folder, &bytes, fh, parsed.as_ref().ok(), dh, k) {
+            match self.add(&original, &src.folder, &src.tags, &bytes, fh, parsed.as_ref().ok(), dh, k) {
                 Ok(entry) => {
+                    idx.insert(&self.entries, self.entries.len() - 1);
                     if let Some((same_as, same_folder)) = similar_to {
                         report.similar.push(Duplicate { file: original.clone(), same_as, same_folder });
                     }
@@ -385,13 +501,15 @@ impl Library {
                 Err(e) => report.problems.push(format!("{original} : {e}")),
             }
         }
-        progress(total, total, "");
-        if !report.added.is_empty() {
-            if let Err(e) = self.save() {
-                report.problems.push(format!("Impossible d'enregistrer la liste : {e}"));
-            }
+        false
+    }
+
+    /// Termine un import : enregistre la liste et renvoie le compte rendu.
+    pub fn finish_import(&mut self, mut job: ImportJob) -> ImportReport {
+        if let Err(e) = self.save() {
+            job.report.problems.push(format!("Impossible d'enregistrer la liste : {e}"));
         }
-        report
+        job.report
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -399,6 +517,7 @@ impl Library {
         &mut self,
         original: &str,
         folder: &str,
+        tags: &[String],
         bytes: &[u8],
         fh: String,
         d: Option<&Design>,
@@ -414,7 +533,7 @@ impl Library {
         while self.get(&id).is_some() {
             id.push('x');
         }
-        if let Some(png) = d.and_then(|d| render::render_png(d, THUMB_SIZE)) {
+        if let Some(png) = d.and_then(|d| render::render_thumb_jpeg(d, THUMB_SIZE)) {
             let _ = fs::write(self.thumb_path(&id), png);
         }
         let entry = Entry {
@@ -432,7 +551,10 @@ impl Library {
             height_mm: d.map(|d| d.height_mm()).unwrap_or(0.0),
             stitches: d.map(|d| d.stitch_count).unwrap_or(0),
             colors: d.map(|d| d.threads()).unwrap_or_default(),
-            tags: Vec::new(),
+            tags: {
+                let mut seen = HashSet::new();
+                tags.iter().filter(|t| seen.insert(t.to_lowercase())).cloned().collect()
+            },
             favorite: false,
             added_at: now_ms() + order as u64,
             label: d.map(|d| d.label.clone()).unwrap_or_default(),
@@ -472,18 +594,48 @@ impl Library {
         let mut order: Vec<usize> = (0..self.entries.len()).collect();
         order.sort_by_key(|&i| (self.entries[i].preference(), self.entries[i].added_at));
         let mut groups: Vec<Vec<usize>> = Vec::new();
+        // Index des premières broderies de chaque groupe (empreintes et tailles).
+        let mut heads_file: std::collections::HashMap<&str, usize> = Default::default();
+        let mut heads_design: std::collections::HashMap<&str, usize> = Default::default();
+        let mut heads_size: std::collections::HashMap<(i32, i32), Vec<usize>> = Default::default();
         for i in order {
             let e = &self.entries[i];
-            let twin = groups.iter().position(|g| {
-                let o = &self.entries[g[0]];
-                !self.distinct.contains(&pair(&o.file_hash, &e.file_hash))
-                    && (o.file_hash == e.file_hash
-                        || (e.design_hash.is_some() && o.design_hash == e.design_hash)
-                        || e.shape_bits.as_deref().is_some_and(|s| same_motif(o, e.width_mm, e.height_mm, e.stitches, s)))
-            });
+            let ok = |g: usize| !self.distinct.contains(&pair(&self.entries[groups[g][0]].file_hash, &e.file_hash));
+            let mut twin = heads_file.get(e.file_hash.as_str()).copied().filter(|&g| ok(g));
+            if twin.is_none() {
+                twin = e.design_hash.as_deref().and_then(|h| heads_design.get(h)).copied().filter(|&g| ok(g));
+            }
+            if twin.is_none() {
+                if let Some(s) = e.shape_bits.as_deref() {
+                    let tol = 1.0f32.max(e.width_mm.max(e.height_mm) * 0.02);
+                    let r = (tol / SIZE_CELL).ceil() as i32 + 1;
+                    let (cw, chh) = size_cell(e.width_mm, e.height_mm);
+                    'search: for x in cw - r..=cw + r {
+                        for y in chh - r..=chh + r {
+                            for &g in heads_size.get(&(x, y)).into_iter().flatten() {
+                                let o = &self.entries[groups[g][0]];
+                                if ok(g) && same_motif(o, e.width_mm, e.height_mm, e.stitches, s) {
+                                    twin = Some(g);
+                                    break 'search;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             match twin {
                 Some(g) => groups[g].push(i),
-                None => groups.push(vec![i]),
+                None => {
+                    let g = groups.len();
+                    groups.push(vec![i]);
+                    heads_file.entry(e.file_hash.as_str()).or_insert(g);
+                    if let Some(h) = e.design_hash.as_deref() {
+                        heads_design.entry(h).or_insert(g);
+                    }
+                    if e.shape_bits.is_some() {
+                        heads_size.entry(size_cell(e.width_mm, e.height_mm)).or_default().push(g);
+                    }
+                }
             }
         }
         groups
@@ -557,10 +709,10 @@ impl Library {
         (pending.iter().take(limit).map(|e| e.id.clone()).collect(), pending.len())
     }
 
-    /// L'image d'un motif à montrer à l'IA (sur fond blanc).
+    /// L'image d'un motif à montrer à l'IA (JPEG sur fond blanc).
     pub fn ai_image(&self, id: &str) -> Result<Vec<u8>, String> {
         let d = self.design(id)?;
-        render::render_png_on(&d, 384, Some((255, 255, 255))).ok_or_else(|| "image impossible".to_string())
+        render::render_jpeg_on(&d, 384, (255, 255, 255)).ok_or_else(|| "image impossible".to_string())
     }
 
     /// Enregistre ce que l'IA a vu sur un motif.
@@ -581,6 +733,24 @@ impl Library {
     /// Enregistre la liste sur le disque (après une série d'analyses par l'IA).
     pub fn flush(&self) -> Result<(), String> {
         self.save().map_err(|e| e.to_string())
+    }
+
+    /// Ajoute un mot-clé à plusieurs broderies d'un coup (tout un dossier, par exemple).
+    pub fn add_tag_to(&mut self, ids: &[String], tag: &str) -> Result<usize, String> {
+        let tag = tag.trim();
+        if tag.is_empty() {
+            return Ok(0);
+        }
+        let wanted: HashSet<&str> = ids.iter().map(String::as_str).collect();
+        let mut n = 0;
+        for e in self.entries.iter_mut().filter(|e| wanted.contains(e.id.as_str())) {
+            if !e.tags.iter().any(|t| t.to_lowercase() == tag.to_lowercase()) {
+                e.tags.push(tag.to_string());
+                n += 1;
+            }
+        }
+        self.save().map_err(|e| e.to_string())?;
+        Ok(n)
     }
 
     /// Renommer, changer les mots-clés, mettre en favori.
@@ -666,26 +836,38 @@ impl Library {
 }
 
 /// Rassemble les fichiers à importer. Un dossier ou un .zip ajouté donne son nom au dossier
-/// de la bibliothèque où ses broderies sont rangées ; un fichier ajouté seul n'a pas de dossier.
-fn collect(p: &Path, folder: Option<&str>, todo: &mut Vec<Source>, report: &mut ImportReport) {
+/// de la bibliothèque où ses broderies sont rangées ; ses sous-dossiers deviennent des mots-clés.
+/// Un fichier ajouté seul n'a pas de dossier.
+fn collect(p: &Path, todo: &mut Vec<Source>, report: &mut ImportReport) {
     if p.is_dir() {
-        let folder = folder.map(str::to_string).unwrap_or_else(|| folder_name(p));
+        let folder = folder_name(p);
         for e in walkdir::WalkDir::new(p).sort_by_file_name().into_iter().filter_map(|e| e.ok()) {
             if e.file_type().is_file() {
-                collect(e.path(), Some(&folder), todo, report);
+                let rel = e.path().parent().and_then(|d| d.strip_prefix(p).ok()).unwrap_or(Path::new(""));
+                collect_file(e.path(), &folder, tags_of_path(rel), todo, report);
             }
         }
-        return;
+    } else {
+        collect_file(p, "", Vec::new(), todo, report);
     }
+}
+
+fn collect_file(p: &Path, folder: &str, tags: Vec<String>, todo: &mut Vec<Source>, report: &mut ImportReport) {
     let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     if ext_of(&name) == "zip" {
         // Un .zip garde son propre nom, même s'il est dans un dossier ajouté.
         let zip_folder = folder_name(p);
         match read_zip(p) {
             Ok(files) => {
-                for (n, b) in files {
+                for (i, inner) in files {
+                    let n = inner.rsplit(['/', '\\']).next().unwrap_or_default().to_string();
                     if is_embroidery(&n) {
-                        todo.push(Source::Bytes(n, b, zip_folder.clone()));
+                        let mut t = tags.clone();
+                        if let Some((dir, _)) = inner.replace('\\', "/").rsplit_once('/') {
+                            t.extend(tags_of_path(Path::new(dir)));
+                        }
+                        let kind = SourceKind::Zip(p.to_path_buf(), i, n);
+                        todo.push(Source { kind, folder: zip_folder.clone(), tags: t });
                     } else {
                         report.ignored += 1;
                     }
@@ -694,29 +876,21 @@ fn collect(p: &Path, folder: Option<&str>, todo: &mut Vec<Source>, report: &mut 
             Err(e) => report.problems.push(format!("{name} : {e}")),
         }
     } else if is_embroidery(&name) {
-        todo.push(Source::Path(p.to_path_buf(), folder.unwrap_or_default().to_string()));
+        todo.push(Source { kind: SourceKind::Path(p.to_path_buf()), folder: folder.to_string(), tags });
     } else {
         report.ignored += 1;
     }
 }
 
-fn read_zip(p: &Path) -> Result<Vec<(String, Vec<u8>)>, String> {
+/// Liste les fichiers d'un .zip (numéro et chemin), sans les lire.
+fn read_zip(p: &Path) -> Result<Vec<(usize, String)>, String> {
     let f = fs::File::open(p).map_err(|e| e.to_string())?;
     let mut z = zip::ZipArchive::new(f).map_err(|_| "ce fichier .zip est abîmé".to_string())?;
     let mut out = Vec::new();
     for i in 0..z.len() {
-        let Ok(mut file) = z.by_index(i) else { continue };
-        if file.is_dir() {
-            continue;
-        }
-        let name = file.name().rsplit(['/', '\\']).next().unwrap_or_default().to_string();
-        if !is_embroidery(&name) {
-            out.push((name, Vec::new()));
-            continue;
-        }
-        let mut b = Vec::with_capacity(file.size() as usize);
-        if file.read_to_end(&mut b).is_ok() {
-            out.push((name, b));
+        let Ok(file) = z.by_index_raw(i) else { continue };
+        if !file.is_dir() {
+            out.push((i, file.name().to_string()));
         }
     }
     Ok(out)

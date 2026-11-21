@@ -1,5 +1,5 @@
 // État de l'application : la liste des broderies et ce qui est affiché.
-import { norm } from "./util.js";
+import { norm, colorCount } from "./util.js";
 
 const RECENT_DAYS = 30;
 
@@ -20,6 +20,13 @@ export function setEntries(list) { state.entries = list; emit(); }
 export function upsert(entry) {
   const i = state.entries.findIndex(e => e.id === entry.id);
   if (i >= 0) state.entries[i] = entry; else state.entries.push(entry);
+  emit();
+}
+/** Met à jour quelques champs de plusieurs broderies (ex. ce que l'IA vient de trouver). */
+export function patchEntries(list) {
+  if (!list.length) return;
+  const byId = new Map(list.map(x => [x.id, x]));
+  state.entries = state.entries.map(e => (byId.has(e.id) ? { ...e, ...byId.get(e.id) } : e));
   emit();
 }
 export function removeEntry(id) { state.entries = state.entries.filter(e => e.id !== id); emit(); }
@@ -105,7 +112,7 @@ export function visible() {
     name: byName,
     big: (a, b) => area(b) - area(a),
     small: (a, b) => area(a) - area(b),
-    colors: (a, b) => a.colors.length - b.colors.length || byName(a, b),
+    colors: (a, b) => colorCount(a) - colorCount(b) || byName(a, b),
   };
   return list.sort(sorters[state.sort] || sorters.recent);
 }

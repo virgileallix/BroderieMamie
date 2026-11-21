@@ -3,6 +3,9 @@ export const $ = id => document.getElementById(id);
 /** Minuscules, sans accents : « Noël » → « noel ». */
 export const norm = s => (s || "").toLowerCase().replace(/œ/g, "oe").replace(/æ/g, "ae").normalize("NFD").replace(/[̀-ͯ]/g, "");
 
+/** Nombre de couleurs de fil d'une broderie. */
+export const colorCount = e => e.colorCount ?? e.colors.length;
+
 export const plural = (n, one, many) => `${n.toLocaleString("fr-FR")} ${n > 1 ? many ?? one + "s" : one}`;
 
 export const cm = mm => (mm / 10).toLocaleString("fr-FR", { maximumFractionDigits: 1 });

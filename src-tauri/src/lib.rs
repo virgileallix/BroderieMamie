@@ -90,8 +90,29 @@ fn ai_status_of(app: &AppHandle) -> ai::AiStatus {
     }
 }
 
+/// Ce que l'IA vient de trouver pour une broderie (envoyé à l'interface au fur et à mesure).
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AiFound {
+    id: String,
+    ai_description: String,
+    ai_keywords: Vec<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AiProgress {
+    #[serde(flatten)]
+    status: ai::AiStatus,
+    found: Vec<AiFound>,
+}
+
 fn emit_ai(app: &AppHandle) {
-    let _ = app.emit("ai-progress", ai_status_of(app));
+    emit_ai_found(app, Vec::new());
+}
+
+fn emit_ai_found(app: &AppHandle, found: Vec<AiFound>) {
+    let _ = app.emit("ai-progress", AiProgress { status: ai_status_of(app), found });
 }
 
 /// Lance l'analyse des motifs pas encore regardés par l'IA (si une clé est enregistrée).
@@ -111,6 +132,7 @@ fn start_ai(app: &AppHandle) {
         models.extend(ai::MODELS.iter().map(|m| m.to_string()));
         models.dedup();
         let (mut model_i, mut failures, mut wait) = (0usize, 0u32, 30u64);
+        let mut last_save = std::time::Instant::now();
         emit_ai(&app);
         loop {
             if st.stop.load(Ordering::SeqCst) {
@@ -153,9 +175,18 @@ fn start_ai(app: &AppHandle) {
                             let _ = l.set_ai(id, "", &[]);
                         }
                     }
-                    let _ = l.flush();
+                    // La liste peut être grosse : on l'enregistre au plus une fois par minute.
+                    if last_save.elapsed().as_secs() >= 60 {
+                        let _ = l.flush();
+                        last_save = std::time::Instant::now();
+                    }
+                    let found = images
+                        .iter()
+                        .filter_map(|(id, _)| l.get(id))
+                        .map(|e| AiFound { id: e.id.clone(), ai_description: e.ai_description.clone(), ai_keywords: e.ai_keywords.clone() })
+                        .collect();
                     drop(l);
-                    emit_ai(&app);
+                    emit_ai_found(&app, found);
                     std::thread::sleep(Duration::from_secs(5)); // rester sous la limite gratuite
                 }
                 Err(ai::AiError::ModelNotFound) => model_i += 1,
@@ -183,6 +214,7 @@ fn start_ai(app: &AppHandle) {
                 }
             }
         }
+        let _ = lock(&lib).flush();
         st.running.store(false, Ordering::SeqCst);
         emit_ai(&app);
     });
@@ -240,7 +272,90 @@ fn ai_start(app: AppHandle) -> Result<ai::AiStatus, String> {
 struct LibraryInfo {
     root: String,
     thumbs: String,
-    entries: Vec<Entry>,
+    entries: Vec<EntryView>,
+}
+
+/// Ce dont l'interface a besoin pour une broderie (sans les empreintes, pour rester léger
+/// avec des dizaines de milliers de motifs).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EntryView {
+    id: String,
+    name: String,
+    file_name: String,
+    folder: String,
+    original_name: String,
+    ext: String,
+    format: Option<String>,
+    #[serde(rename = "widthMM")]
+    width_mm: f32,
+    #[serde(rename = "heightMM")]
+    height_mm: f32,
+    stitches: usize,
+    colors: Vec<broderie_core::design::Thread>,
+    color_count: usize,
+    tags: Vec<String>,
+    favorite: bool,
+    added_at: u64,
+    label: String,
+    ai_description: String,
+    ai_keywords: Vec<String>,
+}
+
+impl From<&Entry> for EntryView {
+    fn from(e: &Entry) -> Self {
+        EntryView {
+            id: e.id.clone(),
+            name: e.name.clone(),
+            file_name: e.file_name.clone(),
+            folder: e.folder.clone(),
+            original_name: e.original_name.clone(),
+            ext: e.ext.clone(),
+            format: e.format.clone(),
+            width_mm: e.width_mm,
+            height_mm: e.height_mm,
+            stitches: e.stitches,
+            colors: e.colors.iter().take(8).cloned().collect(),
+            color_count: e.colors.len(),
+            tags: e.tags.clone(),
+            favorite: e.favorite,
+            added_at: e.added_at,
+            label: e.label.clone(),
+            ai_description: e.ai_description.clone(),
+            ai_keywords: e.ai_keywords.clone(),
+        }
+    }
+}
+
+/// Compte rendu d'import pour l'interface : des nombres, et des listes raccourcies.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportSummary {
+    added: usize,
+    duplicates: Vec<broderie_core::library::Duplicate>,
+    duplicate_count: usize,
+    similar: Vec<broderie_core::library::Duplicate>,
+    similar_count: usize,
+    ignored: usize,
+    problems: Vec<String>,
+    problem_count: usize,
+}
+
+const LIST_MAX: usize = 300;
+
+impl From<ImportReport> for ImportSummary {
+    fn from(r: ImportReport) -> Self {
+        ImportSummary {
+            added: r.added.len(),
+            duplicate_count: r.duplicates.len(),
+            duplicates: r.duplicates.into_iter().take(LIST_MAX).collect(),
+            similar_count: r.similar.len(),
+            similar: r.similar.into_iter().take(LIST_MAX).collect(),
+            ignored: r.ignored,
+            problem_count: r.problems.len(),
+            problems: r.problems.into_iter().take(LIST_MAX).collect(),
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -286,33 +401,57 @@ fn library_info(lib: State<Lib>) -> LibraryInfo {
     LibraryInfo {
         root: l.root().to_string_lossy().into_owned(),
         thumbs: l.thumb_path("").parent().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default(),
-        entries: l.entries().to_vec(),
+        entries: l.entries().iter().map(EntryView::from).collect(),
     }
 }
 
 #[tauri::command]
-async fn import_paths(app: AppHandle, lib: State<'_, Lib>, paths: Vec<String>) -> Result<ImportReport, String> {
+async fn import_paths(app: AppHandle, lib: State<'_, Lib>, paths: Vec<String>) -> Result<ImportSummary, String> {
     let lib = lib.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+        let _ = app.emit("import-progress", Progress { done: 0, total: 0, file: String::new() });
+        // On liste d'abord les fichiers (ça peut être long sur un disque dur entier)…
+        let mut job = Library::prepare_import(&paths);
         let mut last = std::time::Instant::now();
-        let report = lock(&lib).import(&paths, |done, total, file| {
-            if done == 0 || done == total || last.elapsed().as_millis() > 60 {
+        let mut progress = |done: usize, total: usize, file: &str| {
+            if done == 0 || done == total || last.elapsed().as_millis() > 80 {
                 last = std::time::Instant::now();
                 let _ = app.emit("import-progress", Progress { done, total, file: file.to_string() });
             }
-        });
+        };
+        // … puis on les ajoute par petits paquets : le reste du logiciel reste utilisable,
+        // et la liste est enregistrée régulièrement (rien n'est perdu si on ferme en cours).
+        let mut since_save = 0;
+        loop {
+            let finished = lock(&lib).import_step(&mut job, 100, &mut progress);
+            if finished {
+                break;
+            }
+            since_save += 100;
+            if since_save >= 2000 {
+                since_save = 0;
+                let _ = lock(&lib).flush();
+            }
+        }
+        let report = lock(&lib).finish_import(job);
         // Les nouvelles broderies sont ensuite regardées par l'IA (si elle est activée).
         start_ai(&app);
-        report
+        ImportSummary::from(report)
     })
     .await
     .map_err(|e| e.to_string())
 }
 
+/// Ajoute un mot-clé à plusieurs broderies (tout un dossier, par exemple).
 #[tauri::command]
-fn update_entry(lib: State<Lib>, id: String, update: EntryUpdate) -> Result<Entry, String> {
-    lock(&lib).update(&id, update)
+fn add_tag_to(lib: State<Lib>, ids: Vec<String>, tag: String) -> Result<usize, String> {
+    lock(&lib).add_tag_to(&ids, &tag)
+}
+
+#[tauri::command]
+fn update_entry(lib: State<Lib>, id: String, update: EntryUpdate) -> Result<EntryView, String> {
+    lock(&lib).update(&id, update).map(|e| EntryView::from(&e))
 }
 
 #[tauri::command]
@@ -414,6 +553,7 @@ pub fn run() {
             find_duplicates,
             entry_path,
             remove_duplicates,
+            add_tag_to,
             ai_status,
             ai_set_key,
             ai_remove_key,

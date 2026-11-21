@@ -10,7 +10,9 @@
     importPaths: async () => {
       const total = 12;
       for (let i = 0; i <= total; i++) { progress({ done: i, total, file: `motif_${i + 1}.pes` }); await wait(60); }
-      return window.__MOCK_IMPORT__ || data.report;
+      const r = window.__MOCK_IMPORT__ || data.report;
+      return { added: r.added.length, duplicates: r.duplicates, duplicateCount: r.duplicates.length, similar: r.similar || [],
+        similarCount: (r.similar || []).length, ignored: r.ignored, problems: r.problems, problemCount: r.problems.length };
     },
     update: async (id, up) => {
       const e = entries.find(x => x.id === id);
@@ -31,6 +33,7 @@
     saveZip: async p => "C:/" + p,
     thumbUrl: p => encodeURI(p), // servi par un petit serveur http local (voir dev/README.md)
     reveal: async () => {},
+    addTagTo: async (ids, tag) => { let n = 0; for (const e of entries) if (ids.includes(e.id) && !e.tags.includes(tag)) { e.tags.push(tag); n++; } return n; },
     aiStatus: async () => window.__MOCK_AI__ || { hasKey: false, builtIn: false, running: false, analysed: 0, total: entries.length, error: null },
     aiSetKey: async key => { await wait(500); if (key.length < 20) throw "Cette clé semble incomplète."; window.__MOCK_AI__ = { hasKey: true, running: true, analysed: 3, total: entries.length, error: null }; return window.__MOCK_AI__; },
     aiRemoveKey: async () => (window.__MOCK_AI__ = { hasKey: false, running: false, analysed: 3, total: entries.length, error: null }),

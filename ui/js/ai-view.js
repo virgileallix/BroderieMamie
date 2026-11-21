@@ -1,11 +1,12 @@
 // Recherche intelligente : réglage de la clé Gemini et avancement de l'analyse des motifs.
 import { api } from "./api.js";
-import { setEntries } from "./state.js";
+import { patchEntries } from "./state.js";
 import { $, plural } from "./util.js";
 
 const STUDIO_URL = "https://aistudio.google.com/app/apikey";
 let status = { hasKey: false, running: false, analysed: 0, total: 0, error: null };
-let refreshTimer;
+let refreshTimer = null;
+const pending = [];
 
 export async function initAi() {
   const dlg = $("aiDlg");
@@ -35,9 +36,9 @@ export async function initAi() {
   $("aiEnable").addEventListener("click", async () => setStatus(await api.aiStart()));
   api.onAiProgress(s => {
     setStatus(s);
-    // Les nouveaux mots-clés de l'IA servent tout de suite à la recherche (sans recharger à chaque lot).
-    clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(async () => setEntries((await api.info()).entries), s.running ? 4000 : 0);
+    // Les nouveaux mots-clés de l'IA servent tout de suite à la recherche (regroupés toutes les 3 s).
+    pending.push(...(s.found || []));
+    if (!refreshTimer) refreshTimer = setTimeout(() => { patchEntries(pending.splice(0)); refreshTimer = null; }, 3000);
   });
   try { setStatus(await api.aiStatus()); } catch { /* pas grave */ }
 }

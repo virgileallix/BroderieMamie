@@ -1,8 +1,8 @@
 // Écran principal : menu de gauche et grille des broderies.
 import { api } from "./api.js";
 import { showError, toast } from "./dialogs.js";
-import { state, counts, allTags, allFolders, visible, viewTitle, upsert, emit, fmtOf } from "./state.js";
-import { $, el, icon, joinPath, plural, size, prefs } from "./util.js";
+import { state, counts, allTags, allFolders, visible, viewTitle, upsert, emit, fmtOf, setEntries } from "./state.js";
+import { $, el, icon, joinPath, plural, size, prefs, colorCount } from "./util.js";
 
 const PAGE = 150;
 let shown = PAGE;
@@ -39,6 +39,29 @@ export function initLibrary({ onOpen }) {
   for (const b of document.querySelectorAll("button[data-size]")) b.addEventListener("click", () => setSize(b.dataset.size));
 
   $("btnMore").addEventListener("click", () => { shown += PAGE; render(); });
+
+  // Un mot-clé pour toutes les broderies affichées (un dossier, ou le résultat d'une recherche).
+  $("btnBulkTag").addEventListener("click", () => {
+    const n = visible().length;
+    $("bulkText").textContent = `Le mot-clé sera ajouté aux ${plural(n, "broderie affichée", "broderies affichées")} (« ${viewTitle()} »${state.query ? `, recherche « ${state.query} »` : ""}).`;
+    $("bulkInput").value = "";
+    $("bulkList").replaceChildren(...allTags().map(t => el("option", { value: t.name })));
+    $("bulkDlg").showModal();
+    $("bulkInput").focus();
+  });
+  $("bulkCancel").addEventListener("click", () => $("bulkDlg").close());
+  $("bulkForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const tag = $("bulkInput").value.trim();
+    if (!tag) return;
+    $("bulkDlg").close();
+    try {
+      const ids = visible().map(x => x.id);
+      const n = await api.addTagTo(ids, tag);
+      setEntries((await api.info()).entries);
+      toast(n ? `Mot-clé « ${tag} » ajouté à ${plural(n, "broderie")}` : `Ces broderies avaient déjà le mot-clé « ${tag} »`, 4000);
+    } catch (err) { showError(err); }
+  });
 }
 
 /** Lance une recherche (depuis un mot-clé de la fiche, par exemple). */
@@ -76,9 +99,9 @@ function renderNav() {
   const folders = allFolders();
   const folderItem = (view, label, n, extra) => el("button", { class: "nav-item", "data-view": view, title: label },
     icon("folder", "icon nav-ico"), el("span", { class: "nav-label" + (extra ? " nav-label-soft" : "") }, label), el("span", { class: "nav-count" }, n));
-  $("folderNav").replaceChildren(
-    ...folders.list.map(f => folderItem("dir:" + f.name, f.name, f.n)),
-    folders.list.length && folders.loose ? folderItem("dir:", "Ajoutées une par une", folders.loose, true) : null);
+  const folderItems = folders.list.map(f => folderItem("dir:" + f.name, f.name, f.n));
+  if (folders.list.length && folders.loose) folderItems.push(folderItem("dir:", "Ajoutées une par une", folders.loose, true));
+  $("folderNav").replaceChildren(...folderItems);
   $("folderHint").classList.toggle("hidden", folders.list.length > 0);
   if (state.view.startsWith("dir:") && state.view !== "dir:" && !folders.list.some(f => "dir:" + f.name === state.view)) state.view = "all";
   // Si le mot-clé affiché n'existe plus, on revient à « Toutes ».
@@ -93,6 +116,13 @@ function renderGrid() {
   $("viewSub").textContent = !total ? "" :
     state.query ? `${plural(list.length, "broderie trouvée", "broderies trouvées")} pour « ${state.query} »`
       : state.view === "all" ? plural(total, "motif") : plural(list.length, "broderie");
+
+  // Bouton « mot-clé pour toutes » : dans un dossier, un mot-clé, ou après une recherche.
+  const bulk = list.length > 0 && (state.view.startsWith("dir:") || state.view.startsWith("tag:") || state.view.startsWith("fmt:") || state.query);
+  $("btnBulkTag").classList.toggle("hidden", !bulk);
+  $("bulkLbl").textContent = state.view.startsWith("dir:") && !state.query
+    ? `Ajouter un mot-clé à tout ce dossier (${list.length})`
+    : `Ajouter un mot-clé à ces ${plural(list.length, "broderie")}`;
 
   const grid = $("grid");
   grid.replaceChildren(...list.slice(0, shown).map(card));
@@ -118,20 +148,21 @@ function renderGrid() {
 function card(e) {
   const thumb = el("div", { class: "card-thumb" });
   if (e.format) {
-    const img = el("img", { src: api.thumbUrl(joinPath(state.thumbs, e.id + ".png")), alt: "", loading: "lazy", decoding: "async" });
-    img.onerror = () => img.replaceWith(el("span", { class: "no-thumb" }, "Aperçu indisponible"));
+    const img = el("img", { src: api.thumbUrl(joinPath(state.thumbs, e.id + ".jpg")), alt: "", loading: "lazy", decoding: "async" });
+    img.onerror = () => { thumb.classList.add("empty"); img.replaceWith(el("span", { class: "no-thumb" }, "Aperçu indisponible")); };
     thumb.append(img);
   } else {
+    thumb.classList.add("empty");
     thumb.append(el("span", { class: "no-thumb" }, "Aperçu indisponible"));
   }
-  const shownColors = e.colors.slice(0, 8);
+  const shownColors = e.colors.slice(0, 8), nColors = colorCount(e);
   const body = el("div", { class: "card-body" },
     el("div", { class: "card-name", title: e.name }, e.name),
     el("div", { class: "card-meta" }, e.widthMM ? size(e.widthMM, e.heightMM) : e.originalName),
     e.folder && !state.view.startsWith("dir:") ? el("div", { class: "card-folder", title: "Dossier « " + e.folder + " »" }, icon("folder"), e.folder) : null,
-    e.colors.length ? el("div", { class: "card-dots", "aria-label": plural(e.colors.length, "couleur") },
+    nColors ? el("div", { class: "card-dots", "aria-label": plural(nColors, "couleur") },
       shownColors.map(c => el("span", { style: `background:${c.color}`, title: c.name || c.color })),
-      e.colors.length > 8 ? el("em", {}, "+" + (e.colors.length - 8)) : null) : null);
+      nColors > 8 ? el("em", {}, "+" + (nColors - 8)) : null) : null);
 
   const fav = el("button", {
     class: "card-fav" + (e.favorite ? " on" : ""),

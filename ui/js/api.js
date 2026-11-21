@@ -17,6 +17,7 @@ function tauriApi() {
     backup: dest => invoke("backup", { dest }),
     findDuplicates: () => invoke("find_duplicates"),
     entryPath: id => invoke("entry_path", { id }),
+    addTagTo: (ids, tag) => invoke("add_tag_to", { ids, tag }),
     aiStatus: () => invoke("ai_status"),
     aiSetKey: key => invoke("ai_set_key", { key }),
     aiRemoveKey: () => invoke("ai_remove_key"),

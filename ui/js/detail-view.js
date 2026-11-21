@@ -3,7 +3,7 @@ import { api } from "./api.js";
 import { confirmBox, showError, toast } from "./dialogs.js";
 import { Viewer, bestHoop } from "./renderer.js";
 import { state, upsert, removeEntry, allTags, fmtOf } from "./state.js";
-import { $, el, icon, joinPath, norm, plural, size, cm, prefs } from "./util.js";
+import { $, el, icon, norm, plural, size, cm, prefs, colorCount } from "./util.js";
 
 let viewer;
 let entry = null;
@@ -157,7 +157,7 @@ function fillInfo() {
   const facts = e.format ? [
     ["Taille", size(e.widthMM, e.heightMM), true],
     ["Points", e.stitches.toLocaleString("fr-FR")],
-    ["Couleurs", String(e.colors.length)],
+    ["Couleurs", String(colorCount(e))],
     ["Cadre conseillé", hoop ? `${cm(hoop[0])} × ${cm(hoop[1])} cm` : "très grand"],
     ["Format", e.ext === e.format ? e.format : `${e.format} (.${e.ext.toLowerCase()})`],
   ] : [["Aperçu", "Ce fichier n'a pas pu être lu", true], ["Format", e.ext]];

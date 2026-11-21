@@ -174,7 +174,7 @@ fn analyse_par_ia_enregistree() {
     let (ids, total) = lib.ai_pending(1);
     assert_eq!((ids.len(), total), (1, 2));
     let png = lib.ai_image(&ids[0]).unwrap();
-    assert!(png.starts_with(b"\x89PNG"));
+    assert!(png.starts_with(&[0xFF, 0xD8]), "JPEG");
     lib.set_ai(&ids[0], " Une rose rouge ", &["Rose".into(), "fleur".into(), "rose".into(), "".into()]).unwrap();
     lib.flush().unwrap();
     let lib = Library::open(dir.path()).unwrap();
@@ -182,4 +182,39 @@ fn analyse_par_ia_enregistree() {
     assert_eq!(e.ai_description, "Une rose rouge");
     assert_eq!(e.ai_keywords, ["rose", "fleur"]);
     assert_eq!(lib.ai_pending(10).1, 1);
+}
+
+#[test]
+fn sous_dossiers_en_mots_cles() {
+    let root = tempfile::tempdir().unwrap();
+    let base = root.path().join("Broderies de Josiane");
+    fs::create_dir_all(base.join("Noël/Anges")).unwrap();
+    fs::create_dir_all(base.join("PES/Fleurs_du_jardin")).unwrap();
+    fs::copy(fx("Rose_ancienne.pes"), base.join("PES/Fleurs_du_jardin/rose.pes")).unwrap();
+    fs::copy(fx("Sapin_enneige.pes"), base.join("Noël/Anges/sapin.pes")).unwrap();
+    let zip_path = base.join("Animaux.zip");
+    {
+        use std::io::Write;
+        let mut z = zip::ZipWriter::new(fs::File::create(&zip_path).unwrap());
+        z.start_file("Bébé/Ours/ourson.pes", zip::write::SimpleFileOptions::default()).unwrap();
+        z.write_all(&fs::read(fx("Ourson_Leon.pes")).unwrap()).unwrap();
+        z.finish().unwrap();
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let mut lib = Library::open(dir.path()).unwrap();
+    lib.import(&[base], |_, _, _| {});
+    let tags = |n: &str| lib.entries().iter().find(|e| e.name == n).unwrap().tags.clone();
+    assert_eq!(tags("sapin"), ["Noël", "Anges"]);
+    assert_eq!(tags("rose"), ["Fleurs du jardin"], "« PES » n'est pas un mot-clé utile");
+    assert_eq!(tags("ourson"), ["Bébé", "Ours"]);
+    assert_eq!(lib.entries().iter().find(|e| e.name == "ourson").unwrap().folder, "Animaux");
+
+    // Un mot-clé pour tout un dossier d'un coup.
+    let ids: Vec<String> = lib.entries().iter().filter(|e| e.folder == "Broderies de Josiane").map(|e| e.id.clone()).collect();
+    assert_eq!(ids.len(), 2);
+    let mut lib = lib;
+    assert_eq!(lib.add_tag_to(&ids, "Josiane").unwrap(), 2);
+    assert_eq!(lib.add_tag_to(&ids, "josiane").unwrap(), 0, "déjà là");
+    let lib = Library::open(dir.path()).unwrap();
+    assert!(lib.entries().iter().filter(|e| ids.contains(&e.id)).all(|e| e.tags.contains(&"Josiane".to_string())));
 }

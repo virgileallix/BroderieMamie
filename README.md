@@ -5,7 +5,10 @@ Logiciel Windows pour ranger, retrouver et voir ses motifs de broderie machine :
 
 - **Ajouter** des fichiers, **plusieurs dossiers d'un coup** ou des **.zip** (boutons, ou glisser-déposer depuis l'Explorateur).
   Chaque dossier ou .zip ajouté devient un **dossier de la bibliothèque, à son nom** (rubrique « Mes dossiers »,
-  et sur le disque `Motifs/<nom>/`).
+  et sur le disque `Motifs/<nom>/`). Ses **sous-dossiers deviennent des mots-clés** (`Noël/Anges/ange.pes` → « Noël »,
+  « Anges »), et on peut ajouter un mot-clé à tout un dossier (ou à tous les résultats d'une recherche) d'un coup.
+- Prévu pour de **très grosses collections** (des dizaines de milliers de motifs) : import par paquets avec
+  enregistrement régulier, index pour les doublons, aperçus JPEG légers (~10 Ko), fichiers des .zip lus à la demande.
 - **Doublons** : un fichier strictement identique (même contenu, mêmes points) n'est pas ajouté deux fois.
   Le **même motif** dans un autre format ou une autre version (même taille, même dessin) est repéré, et
   **« Chercher les doublons »** les montre côte à côte : on choisit ce qu'on garde (le PES est conseillé, la

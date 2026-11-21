@@ -10,7 +10,7 @@ use std::time::Duration;
 /// Modèles essayés dans l'ordre (les « lite » ont le plus de quota gratuit).
 pub const MODELS: [&str; 4] = ["gemini-flash-lite-latest", "gemini-2.5-flash-lite", "gemini-flash-latest", "gemini-2.5-flash"];
 /// Nombre de motifs envoyés ensemble.
-pub const BATCH: usize = 8;
+pub const BATCH: usize = 20;
 
 #[derive(Debug)]
 pub enum AiError {
@@ -29,7 +29,7 @@ pub struct Described {
     pub keywords: Vec<String>,
 }
 
-#[derive(Clone, Serialize, Default)]
+#[derive(Clone, Serialize, Default, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct AiStatus {
     pub has_key: bool,
@@ -101,7 +101,7 @@ pub fn describe(key: &str, model: &str, images: &[(String, Vec<u8>)]) -> Result<
     let mut parts = vec![json!({ "text": PROMPT })];
     for (i, (_, png)) in images.iter().enumerate() {
         parts.push(json!({ "text": format!("Image {} :", i + 1) }));
-        parts.push(json!({ "inline_data": { "mime_type": "image/png", "data": b64.encode(png) } }));
+        parts.push(json!({ "inline_data": { "mime_type": "image/jpeg", "data": b64.encode(png) } }));
     }
     let body = json!({
         "contents": [{ "role": "user", "parts": parts }],

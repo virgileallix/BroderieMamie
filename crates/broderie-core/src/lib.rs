@@ -9,4 +9,4 @@ pub mod library;
 pub mod render;
 
 pub use design::{file_hash, parse, parse_named, shape_similarity, Design, Format, ParseError};
-pub use library::{DuplicateGroup, Entry, EntryUpdate, GroupChoice, ImportReport, Library};
+pub use library::{DuplicateGroup, Entry, EntryUpdate, GroupChoice, ImportJob, ImportReport, Library};

@@ -60,7 +60,7 @@ export async function importPaths(paths) {
 }
 
 function showReport(r) {
-  const n = r.added.length, d = r.duplicates.length, sim = r.similar.length;
+  const n = r.added, d = r.duplicateCount, sim = r.similarCount;
   $("iTitle").textContent = n ? (n > 1 ? "Les broderies sont rangées !" : "La broderie est rangée !")
     : d ? "Tout était déjà dans la collection" : "Aucune broderie trouvée";
   $("iRunning").classList.add("hidden");
@@ -69,15 +69,17 @@ function showReport(r) {
   setStat("sDup", "sDupLbl", d, "déjà là, pas ajoutée", "déjà là, pas ajoutées");
   setStat("sSkip", "sSkipLbl", r.ignored, "autre fichier ignoré", "autres fichiers ignorés");
   $("dupDetails").classList.toggle("hidden", !d);
+  const more = (shown, total) => total > shown ? [el("li", { class: "muted" }, `… et ${total - shown} autres`)] : [];
   $("dupList").replaceChildren(...r.duplicates.map(x => el("li", {},
-    `${x.file} → déjà là sous le nom « ${x.sameAs} »` + (x.sameFolder ? `, dans le dossier « ${x.sameFolder} »` : ""))));
+    `${x.file} → déjà là sous le nom « ${x.sameAs} »` + (x.sameFolder ? `, dans le dossier « ${x.sameFolder} »` : ""))),
+    ...more(r.duplicates.length, d));
   $("dupDetails").querySelector("summary").textContent = "Voir les fichiers déjà là";
   $("similarBox").classList.toggle("hidden", !sim);
   $("similarText").textContent = sim
     ? `${plural(sim, "broderie ajoutée ressemble", "broderies ajoutées ressemblent")} à des motifs déjà rangés (même motif dans un autre format, par exemple). Vous pouvez les comparer et choisir lesquelles garder.`
     : "";
-  $("probDetails").classList.toggle("hidden", !r.problems.length);
-  $("probList").replaceChildren(...r.problems.map(p => el("li", {}, p)));
+  $("probDetails").classList.toggle("hidden", !r.problemCount);
+  $("probList").replaceChildren(...r.problems.map(p => el("li", {}, p)), ...more(r.problems.length, r.problemCount));
   $("iDone").querySelector("[data-close]").focus();
   if (!n && !d) $("dupDetails").insertAdjacentElement("beforebegin", el("p", { class: "muted" },
     "Les broderies sont les fichiers .pes, .jef, .vp3, .hus, .vip, .sew, .exp, .dst… " + plural(r.ignored, "autre fichier a été ignoré", "autres fichiers ont été ignorés") + "."));

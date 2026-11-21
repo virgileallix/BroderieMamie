@@ -70,7 +70,7 @@ function item(g, id, i) {
   const fmt = e.format || e.ext;
   return el("div", { class: "dup-item" + (removing ? " remove" : "") },
     el("div", { class: "dup-thumb" },
-      el("img", { src: api.thumbUrl(joinPath(state.thumbs, e.id + ".png")), alt: "" }),
+      el("img", { src: api.thumbUrl(joinPath(state.thumbs, e.id + ".jpg")), alt: "" }),
       el("span", { class: "badge" + (["PES", "PEC"].includes(fmt) ? "" : " badge-other") }, e.ext || fmt),
       i === 0 ? el("span", { class: "dup-advice" }, "Conseillé") : null),
     el("div", { class: "dup-info" },
