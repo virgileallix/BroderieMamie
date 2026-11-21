@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Les broderies de Mamie",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "identifier": "fr.broderies-de-mamie.app",
   "build": {
     "frontendDist": "../ui"
@@ -21,22 +21,49 @@
     ],
     "security": {
       "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src ipc: http://ipc.localhost",
-      "assetProtocol": { "enable": true, "scope": [] }
+      "assetProtocol": {
+        "enable": true,
+        "scope": []
+      }
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "msi"],
+    "targets": [
+      "nsis",
+      "msi"
+    ],
     "shortDescription": "Ranger, retrouver et voir ses broderies",
     "longDescription": "Bibliothèque de motifs de broderie machine (.pes, .vp3, .pv3) sans doublons, avec recherche et visualisation.",
     "category": "Utility",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico", "icons/icon.png"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
     "windows": {
       "nsis": {
-        "languages": ["French"],
+        "languages": [
+          "French"
+        ],
         "installMode": "currentUser"
       },
-      "wix": { "language": "fr-FR" }
+      "wix": {
+        "language": "fr-FR"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ3RDUzODIzOEZEMTAzM0IKUldRN0E5R1BJempWMTZ3ckZjemxaWmdTWlIzdUFaM1lRMWRBY0Fna2htTmEvSkpJMjFKRVdkTXIK",
+      "endpoints": [
+        "https://github.com/virgileallix/BroderieMamie/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

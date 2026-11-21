@@ -26,6 +26,19 @@ Sur GitHub, page **Releases** → `Les.broderies.de.Mamie_x.y.z_x64-setup.exe`. 
 Dans le .zip, double-cliquer sur le fichier qui finit par `setup.exe`.
 Plus simple : la page **Releases** du dépôt contient toujours le dernier installeur (publié automatiquement à chaque mise à jour de `main`).
 
+## Mises à jour automatiques
+
+Au démarrage, le logiciel regarde s'il y a une nouvelle version sur la page Releases ; si oui, il propose
+« Oui, mettre à jour » et s'installe tout seul (les broderies ne bougent pas).
+
+**Sortir une nouvelle version :** changer `"version"` dans `src-tauri/tauri.conf.json` (ex. `1.2.0`),
+puis pousser sur `main`. GitHub fabrique l'installeur, le signe et publie la Release `v1.2.0`.
+
+Les mises à jour sont signées : les secrets `TAURI_SIGNING_PRIVATE_KEY` et `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+doivent exister dans *Settings › Secrets and variables › Actions*. Sans eux, l'installeur est fabriqué
+mais sans mise à jour automatique (un avertissement apparaît dans Actions). La clé publique correspondante
+est dans `src-tauri/tauri.conf.json` — si on perd la clé privée, il faut en refaire une et réinstaller une fois à la main.
+
 ## Organisation du code
 
 | Dossier | Rôle |

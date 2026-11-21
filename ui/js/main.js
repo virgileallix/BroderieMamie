@@ -6,6 +6,7 @@ import { addFiles, addFolder, importPaths, initImport } from "./import-view.js";
 import { initLibrary, render } from "./library-view.js";
 import { state, setEntries, onChange } from "./state.js";
 import { $ } from "./util.js";
+import { checkForUpdate } from "./updater.js";
 
 async function start() {
   if (!available) {
@@ -41,6 +42,7 @@ async function start() {
     state.thumbs = info.thumbs;
     setEntries(info.entries);
   } catch (e) { showError(e); render(); }
+  setTimeout(checkForUpdate, 2500);
 }
 
 async function backup() {
