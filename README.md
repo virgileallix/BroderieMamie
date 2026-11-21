@@ -14,7 +14,10 @@ Logiciel Windows pour ranger, retrouver et voir ses motifs de broderie machine :
 
 **Rien n'est jamais effacé de l'ordinateur** : les fichiers d'origine ne sont que copiés dans la bibliothèque,
 jamais modifiés ni supprimés. « Supprimer » range la copie dans le dossier `Corbeille` de la bibliothèque.
-- **Rechercher** par nom, mot-clé ou couleur (sans se soucier des accents) ; favoris ; mots-clés dans le menu.
+- **Rechercher** par nom, dossier, mot-clé ou couleur (sans se soucier des accents ni du pluriel) ; favoris ; mots-clés dans le menu.
+- **Recherche intelligente (gratuite)** : avec une clé Google AI Studio, l'IA Gemini regarde chaque motif une fois
+  (en arrière-plan) et note ce qu'il représente. Chercher « ange » trouve alors les anges, même nommés « D1234.pes ».
+  Seules les images des motifs sont envoyées ; la clé reste dans les réglages de l'ordinateur (pas dans les sauvegardes).
 - **Voir** chaque motif en grand avec ses vraies couleurs, zoom, fond lin/blanc/noir, cadre conseillé,
   et l'animation **« Voir la broderie se faire »** point par point.
 - **Copier sur la clé USB** pour la machine, **Tout sauvegarder** dans un .zip.

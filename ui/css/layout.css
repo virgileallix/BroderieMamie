@@ -4,12 +4,13 @@
 .sidebar {
   background: var(--bg-sunken); border-right: 1px solid var(--border-line);
   display: flex; flex-direction: column; gap: 22px; padding: 26px 20px 20px; min-height: 0;
+  overflow-y: auto; /* sur un petit écran, tout le menu défile */
 }
 .brand { display: flex; align-items: center; gap: 14px; padding: 0 4px; }
 .brand-title { font-family: var(--font-title); font-weight: 600; font-size: 24px; line-height: 1.05; }
 .brand-sub { font-family: var(--font-title); font-style: italic; font-weight: 400; font-size: 20px; color: var(--brand-rose); line-height: 1.1; }
 
-.nav { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; margin: 0 -8px; padding: 0 8px; min-height: 0; }
+.nav { flex: 1 0 auto; display: flex; flex-direction: column; gap: 2px; margin: 0 -8px; padding: 0 8px; }
 .nav-title { margin: 18px 12px 6px; font-size: 13px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
 .nav-item {
   display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 14px; border-radius: 12px;

@@ -73,15 +73,30 @@ export function allFolders() {
   return { list, loose };
 }
 
-/** Les broderies à afficher, filtrées par la vue et la recherche, puis triées. */
+/** Découpe un texte en mots sans accents, au singulier approximatif (« Anges » → « ange »). */
+export const words = s => norm(s).split(/[^a-z0-9]+/).filter(Boolean).map(w => (w.length > 3 ? w.replace(/[sx]$/, "") : w));
+
+const wordCache = new WeakMap();
+function entryWords(e) {
+  let w = wordCache.get(e);
+  if (!w) {
+    w = words([e.name, e.originalName, e.label, e.folder, e.tags.join(" "), e.ext, e.format,
+      e.aiDescription, (e.aiKeywords || []).join(" "), e.colors.map(c => c.name).join(" ")].join(" "));
+    wordCache.set(e, w);
+  }
+  return w;
+}
+
+/** Les broderies à afficher, filtrées par la vue et la recherche, puis triées.
+ *  Chaque mot cherché doit être le début d'un mot de la broderie : « ange » trouve « ange » et
+ *  « angelot », mais pas « orange ». */
 export function visible() {
-  const words = norm(state.query).split(/\s+/).filter(Boolean);
+  const q = words(state.query);
   const list = state.entries.filter(e => {
     if (!inView(e)) return false;
-    if (!words.length) return true;
-    const hay = norm([e.name, e.originalName, e.label, e.folder, e.tags.join(" "), e.ext, e.format,
-      e.colors.map(c => c.name).join(" ")].join(" "));
-    return words.every(w => hay.includes(w));
+    if (!q.length) return true;
+    const w = entryWords(e);
+    return q.every(x => w.some(y => y.startsWith(x)));
   });
   const area = e => e.widthMM * e.heightMM;
   const byName = (a, b) => a.name.localeCompare(b.name, "fr", { numeric: true, sensitivity: "base" });

@@ -17,6 +17,12 @@ function tauriApi() {
     backup: dest => invoke("backup", { dest }),
     findDuplicates: () => invoke("find_duplicates"),
     entryPath: id => invoke("entry_path", { id }),
+    aiStatus: () => invoke("ai_status"),
+    aiSetKey: key => invoke("ai_set_key", { key }),
+    aiRemoveKey: () => invoke("ai_remove_key"),
+    aiStart: () => invoke("ai_start"),
+    onAiProgress: cb => T.event.listen("ai-progress", e => cb(e.payload)),
+    openUrl: url => T.opener.openUrl(url),
     removeDuplicates: choices => invoke("remove_duplicates", { choices }),
     pickFiles: async () => asList(await T.dialog.open({
       multiple: true, title: "Choisir des broderies",

@@ -119,6 +119,9 @@ async function save(update, message) {
   } catch (e) { showError(e); }
 }
 
+let searchFor = () => {};
+export function setSearchHandler(fn) { searchFor = fn; }
+
 export async function openDetail(id) {
   entry = state.entries.find(e => e.id === id);
   if (!entry) return;
@@ -162,6 +165,14 @@ function fillInfo() {
   facts.push(["Ajoutée le", new Date(e.addedAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }), true]);
   $("facts").replaceChildren(...facts.map(([k, v, wide]) =>
     el("div", { class: "fact" + (wide ? " wide" : "") }, el("span", {}, k), el("strong", {}, v))));
+
+  const ai = e.aiKeywords || [];
+  $("aiSection").classList.toggle("hidden", !ai.length && !e.aiDescription);
+  $("aiDesc").textContent = e.aiDescription || "";
+  $("aiWords").replaceChildren(...ai.map(w => el("button", {
+    class: "ai-word", title: `Chercher « ${w} »`,
+    onclick: () => { dlg().close(); searchFor(w); },
+  }, w)));
 
   $("tags").replaceChildren(...e.tags.map(t => el("span", { class: "tag" }, t,
     el("button", { "aria-label": `Retirer le mot-clé ${t}`, title: "Retirer", onclick: () => save({ tags: e.tags.filter(x => x !== t) }) }, icon("x")))));

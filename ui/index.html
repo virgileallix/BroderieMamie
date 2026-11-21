@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="css/layout.css">
   <link rel="stylesheet" href="css/detail.css">
   <link rel="stylesheet" href="css/duplicates.css">
+  <link rel="stylesheet" href="css/ai.css">
   <script type="module" src="js/main.js"></script>
 </head>
 <body>
@@ -54,6 +55,11 @@
       </nav>
 
       <div class="sidebar-foot">
+        <button class="ai-card" id="btnAi">
+          <svg class="icon"><use href="#i-sparkle"/></svg>
+          <span class="ai-card-text"><strong>Recherche intelligente</strong><small id="aiLine">À activer — gratuit</small></span>
+          <span class="ai-bar hidden" id="aiBar"><span id="aiBarFill"></span></span>
+        </button>
         <button class="btn btn-secondary btn-block" id="btnBackup">
           <svg class="icon"><use href="#i-usb"/></svg>
           Tout sauvegarder
@@ -169,6 +175,12 @@
 
           <div class="facts" id="facts"></div>
 
+          <section class="ai-section hidden" id="aiSection">
+            <h3 class="info-h"><svg class="icon"><use href="#i-sparkle"/></svg>Vu par l'IA</h3>
+            <p class="ai-desc" id="aiDesc"></p>
+            <div class="ai-words" id="aiWords"></div>
+          </section>
+
           <h3 class="info-h">Mots-clés</h3>
           <div class="tags" id="tags"></div>
           <form class="tag-add" id="tagForm">
@@ -239,6 +251,44 @@
     </div>
   </dialog>
 
+  <!-- ============ Recherche intelligente ============ -->
+  <dialog class="modal modal-ai" id="aiDlg" aria-labelledby="aiTitle">
+    <div class="modal-body ai-body">
+      <div class="ai-hero"><svg class="icon"><use href="#i-sparkle"/></svg></div>
+      <h2 id="aiTitle">Recherche intelligente</h2>
+      <p class="muted">L'intelligence artificielle de Google (Gemini) regarde chaque motif une fois et note ce qu'il représente.
+        Ensuite, chercher « ange » trouve tous les anges, même si le fichier s'appelle « D1234.pes ». C'est gratuit.</p>
+
+      <div id="aiSetup">
+        <ol class="ai-steps">
+          <li><span>Ouvrez Google AI Studio et connectez-vous avec un compte Google (Gmail).</span>
+            <button class="btn btn-secondary" id="aiOpenStudio">Ouvrir Google AI Studio</button></li>
+          <li><span>Cliquez sur <strong>« Create API key »</strong> (créer une clé), puis sur <strong>« Copy »</strong>.</span></li>
+          <li><span>Collez la clé ici :</span>
+            <form class="ai-key" id="aiForm">
+              <input id="aiKey" placeholder="AIza…" autocomplete="off" spellcheck="false" aria-label="Clé Gemini">
+              <button class="btn btn-primary" type="submit" id="aiSubmit">Activer</button>
+            </form>
+            <p class="ai-error hidden" id="aiFormError"></p></li>
+        </ol>
+      </div>
+
+      <div id="aiActive" class="hidden">
+        <div class="progress"><div class="progress-bar" id="aiDlgBar"></div></div>
+        <p class="ai-state" id="aiDlgState"></p>
+        <p class="ai-error hidden" id="aiDlgError"></p>
+        <div class="modal-actions hidden" id="aiRetryRow"><button class="btn btn-primary" id="aiRetry">Réessayer</button></div>
+      </div>
+
+      <p class="ai-note">Seules les images des motifs sont envoyées à Google, jamais les fichiers. La clé reste sur cet ordinateur.
+        Avec l'offre gratuite, Google peut utiliser ces images pour améliorer ses services.</p>
+      <div class="modal-actions">
+        <button class="btn btn-danger hidden" id="aiRemove">Désactiver</button>
+        <button class="btn btn-secondary btn-lg" data-close>Fermer</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- ============ Confirmation ============ -->
   <dialog class="modal modal-sm" id="confirmDlg" aria-labelledby="cTitle">
     <div class="modal-body">
@@ -285,6 +335,7 @@
       <symbol id="i-grid-l" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="2.5"/></symbol>
       <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
       <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h0"/></symbol>
+      <symbol id="i-sparkle" viewBox="0 0 24 24" fill="currentColor"><path d="M10 2.5c.3 0 .5.2.6.5l1 3.6a5 5 0 0 0 3.5 3.5l3.6 1c.3.1.5.3.5.6s-.2.5-.5.6l-3.6 1a5 5 0 0 0-3.5 3.5l-1 3.6c-.1.3-.3.5-.6.5s-.5-.2-.6-.5l-1-3.6a5 5 0 0 0-3.5-3.5l-3.6-1A.6.6 0 0 1 1 12.2c0-.3.2-.5.5-.6l3.6-1a5 5 0 0 0 3.5-3.5l1-3.6c.1-.3.3-.5.6-.5zM19 1.5c.2 0 .3.1.4.3l.4 1.3c.2.6.6 1 1.2 1.2l1.3.4c.2.1.3.2.3.4s-.1.3-.3.4l-1.3.4c-.6.2-1 .6-1.2 1.2l-.4 1.3c-.1.2-.2.3-.4.3s-.3-.1-.4-.3l-.4-1.3a1.8 1.8 0 0 0-1.2-1.2l-1.3-.4c-.2-.1-.3-.2-.3-.4s.1-.3.3-.4l1.3-.4c.6-.2 1-.6 1.2-1.2l.4-1.3c.1-.2.2-.3.4-.3z"/></symbol>
       <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></symbol>
     </defs>
   </svg>

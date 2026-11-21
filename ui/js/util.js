@@ -1,7 +1,7 @@
 export const $ = id => document.getElementById(id);
 
 /** Minuscules, sans accents : « Noël » → « noel ». */
-export const norm = s => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+export const norm = s => (s || "").toLowerCase().replace(/œ/g, "oe").replace(/æ/g, "ae").normalize("NFD").replace(/[̀-ͯ]/g, "");
 
 export const plural = (n, one, many) => `${n.toLocaleString("fr-FR")} ${n > 1 ? many ?? one + "s" : one}`;
 

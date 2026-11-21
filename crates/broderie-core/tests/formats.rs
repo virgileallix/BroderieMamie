@@ -165,3 +165,21 @@ fn un_dossier_par_dossier_ou_zip_importe() {
     lib.delete(&id).unwrap();
     assert!(dir.path().join("Corbeille/Rose rouge.pes").exists());
 }
+
+#[test]
+fn analyse_par_ia_enregistree() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut lib = Library::open(dir.path()).unwrap();
+    lib.import(&[fx("Rose_ancienne.pes"), fx("Ourson_Leon.pes")], |_, _, _| {});
+    let (ids, total) = lib.ai_pending(1);
+    assert_eq!((ids.len(), total), (1, 2));
+    let png = lib.ai_image(&ids[0]).unwrap();
+    assert!(png.starts_with(b"\x89PNG"));
+    lib.set_ai(&ids[0], " Une rose rouge ", &["Rose".into(), "fleur".into(), "rose".into(), "".into()]).unwrap();
+    lib.flush().unwrap();
+    let lib = Library::open(dir.path()).unwrap();
+    let e = lib.get(&ids[0]).unwrap();
+    assert_eq!(e.ai_description, "Une rose rouge");
+    assert_eq!(e.ai_keywords, ["rose", "fleur"]);
+    assert_eq!(lib.ai_pending(10).1, 1);
+}

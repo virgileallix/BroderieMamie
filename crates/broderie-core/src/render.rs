@@ -10,7 +10,15 @@ fn parse_hex(c: &str) -> (u8, u8, u8) {
 
 /// Dessine la broderie dans une image carrée de `size` pixels, fond transparent.
 pub fn render_png(d: &Design, size: u32) -> Option<Vec<u8>> {
+    render_png_on(d, size, None)
+}
+
+/// Comme `render_png`, sur un fond de couleur (pour l'analyse par l'IA, sur fond blanc).
+pub fn render_png_on(d: &Design, size: u32, background: Option<(u8, u8, u8)>) -> Option<Vec<u8>> {
     let mut pm = Pixmap::new(size, size)?;
+    if let Some((r, g, b)) = background {
+        pm.fill(tiny_skia::Color::from_rgba8(r, g, b, 255));
+    }
     let pad = size as f32 * 0.06;
     let w = (d.max_x - d.min_x).max(1.0);
     let h = (d.max_y - d.min_y).max(1.0);

@@ -62,6 +62,14 @@ pub struct Entry {
     pub shape: Option<String>,
     #[serde(skip)]
     shape_bits: Option<Vec<u8>>,
+    /// Ce que l'IA voit sur le motif (« un ange aux ailes déployées »), pour la recherche.
+    #[serde(default)]
+    pub ai_description: String,
+    #[serde(default)]
+    pub ai_keywords: Vec<String>,
+    /// L'IA a déjà regardé ce motif.
+    #[serde(default)]
+    pub ai_done: bool,
 }
 
 impl Entry {
@@ -431,6 +439,9 @@ impl Library {
             read_error: None,
             shape: None,
             shape_bits: None,
+            ai_description: String::new(),
+            ai_keywords: Vec::new(),
+            ai_done: false,
         };
         let mut entry = entry;
         if let Some(d) = d {
@@ -538,6 +549,38 @@ impl Library {
             k += 1;
         }
         with_dir(candidate)
+    }
+
+    /// Les broderies que l'IA n'a pas encore regardées (au plus `limit`), et leur nombre total.
+    pub fn ai_pending(&self, limit: usize) -> (Vec<String>, usize) {
+        let pending: Vec<&Entry> = self.entries.iter().filter(|e| e.format.is_some() && !e.ai_done).collect();
+        (pending.iter().take(limit).map(|e| e.id.clone()).collect(), pending.len())
+    }
+
+    /// L'image d'un motif à montrer à l'IA (sur fond blanc).
+    pub fn ai_image(&self, id: &str) -> Result<Vec<u8>, String> {
+        let d = self.design(id)?;
+        render::render_png_on(&d, 384, Some((255, 255, 255))).ok_or_else(|| "image impossible".to_string())
+    }
+
+    /// Enregistre ce que l'IA a vu sur un motif.
+    pub fn set_ai(&mut self, id: &str, description: &str, keywords: &[String]) -> Result<(), String> {
+        let e = self.entries.iter_mut().find(|e| e.id == id).ok_or("broderie introuvable")?;
+        e.ai_description = description.trim().to_string();
+        let mut seen = HashSet::new();
+        e.ai_keywords = keywords
+            .iter()
+            .map(|k| k.trim().to_lowercase())
+            .filter(|k| !k.is_empty() && k.chars().count() <= 40 && seen.insert(k.clone()))
+            .take(20)
+            .collect();
+        e.ai_done = true;
+        Ok(())
+    }
+
+    /// Enregistre la liste sur le disque (après une série d'analyses par l'IA).
+    pub fn flush(&self) -> Result<(), String> {
+        self.save().map_err(|e| e.to_string())
     }
 
     /// Renommer, changer les mots-clés, mettre en favori.

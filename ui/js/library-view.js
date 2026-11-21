@@ -41,6 +41,16 @@ export function initLibrary({ onOpen }) {
   $("btnMore").addEventListener("click", () => { shown += PAGE; render(); });
 }
 
+/** Lance une recherche (depuis un mot-clé de la fiche, par exemple). */
+export function searchFor(text) {
+  state.view = "all";
+  state.query = text;
+  $("q").value = text;
+  $("qClear").classList.remove("hidden");
+  $("main").scrollTop = 0;
+  emit();
+}
+
 export function setView(view) {
   state.view = view;
   shown = PAGE;

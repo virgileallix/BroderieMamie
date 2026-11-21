@@ -1,10 +1,11 @@
 // Point d'entrée de l'interface.
 import { api, available } from "./api.js";
-import { initDetail, openDetail } from "./detail-view.js";
+import { initDetail, openDetail, setSearchHandler } from "./detail-view.js";
+import { initAi } from "./ai-view.js";
 import { confirmBox, showError, toast } from "./dialogs.js";
 import { openDuplicates, initDuplicates } from "./duplicates-view.js";
 import { addFiles, addFolder, importPaths, initImport } from "./import-view.js";
-import { initLibrary, render } from "./library-view.js";
+import { initLibrary, render, searchFor } from "./library-view.js";
 import { state, setEntries, onChange } from "./state.js";
 import { $ } from "./util.js";
 import { checkForUpdate } from "./updater.js";
@@ -18,6 +19,8 @@ async function start() {
   initDetail();
   initImport();
   initDuplicates();
+  initAi();
+  setSearchHandler(searchFor);
   onChange(render);
 
   $("btnAdd").addEventListener("click", addFiles);
