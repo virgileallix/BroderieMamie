@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Les broderies de Mamie</title>
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/detail.css">
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <div class="app">
+    <!-- ============ Menu de gauche ============ -->
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="img/logo.svg" alt="" width="52" height="52">
+        <div>
+          <div class="brand-title">Les broderies</div>
+          <div class="brand-sub">de Mamie</div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-block btn-lg" id="btnAdd">
+        <svg class="icon"><use href="#i-plus"/></svg>
+        Ajouter des broderies
+      </button>
+
+      <nav class="nav" id="nav" aria-label="Collections">
+        <button class="nav-item" data-view="all"><span class="nav-dot"></span><span class="nav-label">Toutes</span><span class="nav-count" data-count="all"></span></button>
+        <button class="nav-item" data-view="fav"><svg class="icon nav-ico"><use href="#i-star"/></svg><span class="nav-label">Mes favoris</span><span class="nav-count" data-count="fav"></span></button>
+        <button class="nav-item" data-view="recent"><svg class="icon nav-ico"><use href="#i-clock"/></svg><span class="nav-label">Récentes</span><span class="nav-count" data-count="recent"></span></button>
+
+        <div class="nav-title">Formats</div>
+        <button class="nav-item" data-view="fmt:PES"><span class="nav-tag">PES</span><span class="nav-label">Brother</span><span class="nav-count" data-count="fmt:PES"></span></button>
+        <button class="nav-item" data-view="fmt:VP3"><span class="nav-tag">VP3</span><span class="nav-label">Pfaff / Husqvarna</span><span class="nav-count" data-count="fmt:VP3"></span></button>
+
+        <div class="nav-title">Mes mots-clés</div>
+        <div id="tagNav"></div>
+        <p class="nav-hint" id="tagHint">Ajoutez des mots-clés (« fleurs », « Noël »…) dans la fiche d'une broderie pour les retrouver ici.</p>
+      </nav>
+
+      <div class="sidebar-foot">
+        <button class="btn btn-secondary btn-block" id="btnBackup">
+          <svg class="icon"><use href="#i-usb"/></svg>
+          Tout sauvegarder
+        </button>
+        <button class="link-btn" id="btnFolder">
+          <svg class="icon"><use href="#i-folder"/></svg>
+          Ouvrir le dossier
+        </button>
+      </div>
+    </aside>
+
+    <!-- ============ Contenu ============ -->
+    <main class="main" id="main">
+      <header class="main-head">
+        <div>
+          <h1 id="viewTitle">Toutes mes broderies</h1>
+          <p class="muted" id="viewSub"></p>
+        </div>
+        <div class="size-picker" role="group" aria-label="Taille des images">
+          <span class="muted">Images</span>
+          <button class="seg" data-size="s" aria-label="Petites images"><svg class="icon"><use href="#i-grid-s"/></svg></button>
+          <button class="seg" data-size="m" aria-label="Images moyennes"><svg class="icon"><use href="#i-grid-m"/></svg></button>
+          <button class="seg" data-size="l" aria-label="Grandes images"><svg class="icon"><use href="#i-grid-l"/></svg></button>
+        </div>
+      </header>
+
+      <div class="toolbar">
+        <label class="search">
+          <svg class="icon icon-lg"><use href="#i-search"/></svg>
+          <input id="q" type="search" placeholder="Rechercher une broderie : « rose », « Noël », « lapin »…" autocomplete="off" spellcheck="false" aria-label="Rechercher">
+          <button class="search-clear hidden" id="qClear" aria-label="Effacer la recherche"><svg class="icon"><use href="#i-x"/></svg></button>
+        </label>
+        <label class="select">
+          <span class="muted">Trier</span>
+          <select id="sort" aria-label="Trier les broderies">
+            <option value="recent">Les plus récentes</option>
+            <option value="name">Par nom (A → Z)</option>
+            <option value="big">Les plus grandes</option>
+            <option value="small">Les plus petites</option>
+            <option value="colors">Le moins de couleurs</option>
+          </select>
+          <svg class="icon select-caret"><use href="#i-chevron-down"/></svg>
+        </label>
+      </div>
+
+      <section class="grid" id="grid" aria-live="polite"></section>
+      <div class="more hidden" id="more"><button class="btn btn-secondary" id="btnMore">Afficher plus de broderies</button></div>
+
+      <div class="empty hidden" id="empty">
+        <img src="img/cerceau.svg" alt="" width="220" height="220">
+        <h2 id="emptyTitle">Votre collection est vide</h2>
+        <p class="muted" id="emptyText">Ajoutez vos fichiers de broderie (.pes, .vp3, .pv3). Vous pouvez aussi les faire glisser ici, ou choisir un dossier entier.</p>
+        <div class="empty-actions" id="emptyActions">
+          <button class="btn btn-primary btn-lg" data-action="add-files"><svg class="icon"><use href="#i-plus"/></svg>Choisir des fichiers</button>
+          <button class="btn btn-secondary btn-lg" data-action="add-folder"><svg class="icon"><use href="#i-folder"/></svg>Choisir un dossier</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ============ Fiche d'une broderie ============ -->
+  <dialog class="sheet" id="detail" aria-labelledby="dTitle">
+    <div class="sheet-inner">
+      <section class="viewer">
+        <div class="viewer-top">
+          <button class="btn btn-ghost" data-close><svg class="icon"><use href="#i-arrow-left"/></svg>Retour</button>
+          <div class="seg-group" role="group" aria-label="Fond">
+            <button class="seg-text" data-bg="tissu">Lin</button>
+            <button class="seg-text" data-bg="blanc">Blanc</button>
+            <button class="seg-text" data-bg="noir">Noir</button>
+          </div>
+        </div>
+        <div class="stage bg-tissu" id="stage">
+          <canvas id="cv"></canvas>
+          <div class="stage-tools">
+            <button class="round-btn" id="zIn" aria-label="Zoomer" title="Zoomer"><svg class="icon"><use href="#i-plus"/></svg></button>
+            <button class="round-btn" id="zOut" aria-label="Dézoomer" title="Dézoomer"><svg class="icon"><use href="#i-minus"/></svg></button>
+            <button class="round-btn" id="zFit" aria-label="Voir en entier" title="Voir en entier"><svg class="icon"><use href="#i-fit"/></svg></button>
+            <button class="round-btn" id="hoopBtn" aria-pressed="false" aria-label="Montrer le cadre" title="Montrer le cadre"><svg class="icon"><use href="#i-hoop"/></svg></button>
+          </div>
+          <div class="stage-error hidden" id="stageError">Impossible d'afficher ce motif.</div>
+        </div>
+        <div class="player">
+          <button class="play-btn" id="play" aria-label="Voir la broderie se faire"><svg class="icon icon-lg" id="playIco"><use href="#i-play"/></svg></button>
+          <div class="player-track">
+            <div class="player-label"><strong id="playTitle">Voir la broderie se faire</strong><span class="muted" id="progLbl"></span></div>
+            <input type="range" id="prog" min="0" max="1000" value="1000" aria-label="Avancement de la broderie">
+          </div>
+          <div class="speed" role="group" aria-label="Vitesse">
+            <button class="seg-text" data-speed="0.5">Lent</button>
+            <button class="seg-text" data-speed="1">Normal</button>
+            <button class="seg-text" data-speed="3">Rapide</button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="info">
+        <div class="info-scroll">
+          <div class="title-row">
+            <h2 id="dTitle" class="d-title"></h2>
+            <button class="round-btn" id="btnRename" aria-label="Renommer" title="Renommer"><svg class="icon"><use href="#i-pen"/></svg></button>
+          </div>
+          <form class="rename hidden" id="renameForm">
+            <input id="renameInput" aria-label="Nouveau nom" maxlength="120">
+            <button class="btn btn-primary" type="submit">OK</button>
+          </form>
+          <p class="muted d-file" id="dFile"></p>
+
+          <div class="facts" id="facts"></div>
+
+          <h3 class="info-h">Mots-clés</h3>
+          <div class="tags" id="tags"></div>
+          <form class="tag-add" id="tagForm">
+            <input id="tagInput" placeholder="Ajouter un mot-clé…" list="tagList" aria-label="Ajouter un mot-clé" maxlength="40">
+            <datalist id="tagList"></datalist>
+            <button class="btn btn-secondary" type="submit"><svg class="icon"><use href="#i-plus"/></svg>Ajouter</button>
+          </form>
+
+          <h3 class="info-h">Couleurs de fil <span class="muted" id="colorCount"></span></h3>
+          <ol class="threads" id="threads"></ol>
+        </div>
+        <div class="info-actions">
+          <button class="btn btn-primary btn-block btn-lg" id="btnExport"><svg class="icon"><use href="#i-usb"/></svg>Copier sur la clé USB</button>
+          <div class="info-actions-row">
+            <button class="btn btn-secondary" id="btnFav"><svg class="icon"><use href="#i-star"/></svg><span>Favori</span></button>
+            <button class="btn btn-secondary" id="btnReveal"><svg class="icon"><use href="#i-folder"/></svg>Dossier</button>
+            <button class="btn btn-danger" id="btnDelete"><svg class="icon"><use href="#i-trash"/></svg>Supprimer</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </dialog>
+
+  <!-- ============ Import ============ -->
+  <dialog class="modal" id="importDlg" aria-labelledby="iTitle">
+    <div class="modal-body">
+      <img src="img/cerceau.svg" alt="" width="96" height="96" class="modal-art" id="iArt">
+      <h2 id="iTitle">Ajout des broderies…</h2>
+      <div id="iRunning">
+        <div class="progress"><div class="progress-bar" id="iBar"></div></div>
+        <p class="muted i-file" id="iFile">Recherche des fichiers…</p>
+      </div>
+      <div id="iDone" class="hidden">
+        <div class="stats">
+          <div class="stat stat-ok"><strong id="sAdded">0</strong><span id="sAddedLbl">ajoutées</span></div>
+          <div class="stat stat-dup"><strong id="sDup">0</strong><span id="sDupLbl">doublons retirés</span></div>
+          <div class="stat stat-skip"><strong id="sSkip">0</strong><span id="sSkipLbl">autres fichiers ignorés</span></div>
+        </div>
+        <details class="report hidden" id="dupDetails"><summary>Voir les doublons</summary><ul id="dupList"></ul></details>
+        <details class="report hidden" id="probDetails" open><summary>Fichiers avec un problème</summary><ul id="probList"></ul></details>
+        <button class="btn btn-primary btn-lg btn-block" data-close>Très bien</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- ============ Confirmation ============ -->
+  <dialog class="modal modal-sm" id="confirmDlg" aria-labelledby="cTitle">
+    <div class="modal-body">
+      <h2 id="cTitle"></h2>
+      <p class="muted" id="cText"></p>
+      <div class="modal-actions">
+        <button class="btn btn-secondary btn-lg" id="cNo">Non, garder</button>
+        <button class="btn btn-danger-solid btn-lg" id="cYes">Oui, supprimer</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="drop-overlay hidden" id="dropOverlay">
+    <div class="drop-card">
+      <img src="img/cerceau.svg" alt="" width="120" height="120">
+      <strong>Lâchez vos broderies ici</strong>
+      <span class="muted">Fichiers, dossiers ou .zip — les doublons seront retirés</span>
+    </div>
+  </div>
+  <div class="toast hidden" id="toast" role="status"></div>
+
+  <!-- Icônes -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-minus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+      <symbol id="i-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></symbol>
+      <symbol id="i-star-fill" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+      <symbol id="i-usb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="9" width="10" height="13" rx="2"/><path d="M9 9V3h6v6M11 5.5h0M13 5.5h0"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+      <symbol id="i-pen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13 7 4 4"/></symbol>
+      <symbol id="i-arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+      <symbol id="i-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.9l10.2-6.5a1 1 0 0 0 0-1.7L9.5 4.6A1 1 0 0 0 8 5.5z"/></symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4.5" height="14" rx="1.2"/><rect x="13.5" y="5" width="4.5" height="14" rx="1.2"/></symbol>
+      <symbol id="i-fit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+      <symbol id="i-hoop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><circle cx="12" cy="13" r="5" stroke-dasharray="2 2"/><path d="M10 3h4v2h-4z"/></symbol>
+      <symbol id="i-grid-s" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="5" height="5" rx="1"/><rect x="9.5" y="3" width="5" height="5" rx="1"/><rect x="16" y="3" width="5" height="5" rx="1"/><rect x="3" y="9.5" width="5" height="5" rx="1"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><rect x="16" y="9.5" width="5" height="5" rx="1"/><rect x="3" y="16" width="5" height="5" rx="1"/><rect x="9.5" y="16" width="5" height="5" rx="1"/><rect x="16" y="16" width="5" height="5" rx="1"/></symbol>
+      <symbol id="i-grid-m" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></symbol>
+      <symbol id="i-grid-l" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="2.5"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></symbol>
+    </defs>
+  </svg>
+</body>
+</html>

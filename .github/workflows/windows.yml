@@ -1,0 +1,53 @@
+name: Logiciel Windows (.exe)
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: Tests du cœur (lecture des broderies)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p broderie-core
+
+  windows:
+    name: Installeur Windows
+    needs: tests
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+      - run: npm install
+      - name: Construire l'application
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Sur un tag « v1.2.3 », une page de téléchargement (Release) est créée automatiquement.
+          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+          releaseName: "Les broderies de Mamie ${{ github.ref_name }}"
+          releaseBody: "Téléchargez le fichier se terminant par « setup.exe » et double-cliquez dessus pour installer."
+          releaseDraft: false
+      - name: Mettre l'installeur à disposition
+        uses: actions/upload-artifact@v4
+        with:
+          name: Installeur-Broderies-de-Mamie
+          path: |
+            target/release/bundle/nsis/*.exe
+            target/release/bundle/msi/*.msi
+          if-no-files-found: error
