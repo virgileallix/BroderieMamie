@@ -38,9 +38,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          # Sur un tag « v1.2.3 », une page de téléchargement (Release) est créée automatiquement.
-          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
-          releaseName: "Les broderies de Mamie ${{ github.ref_name }}"
+          # Sur la branche principale, une page de téléchargement (Release) « v<version> » est
+          # créée ou mise à jour automatiquement, avec l'installeur dedans.
+          tagName: ${{ (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && 'v__VERSION__' || '' }}
+          releaseName: "Les broderies de Mamie v__VERSION__"
           releaseBody: "Téléchargez le fichier se terminant par « setup.exe » et double-cliquez dessus pour installer."
           releaseDraft: false
       - name: Mettre l'installeur à disposition

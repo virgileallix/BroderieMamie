@@ -22,9 +22,9 @@ Broderies de Mamie/
 
 ## Installer
 
-Sur GitHub, onglet **Actions** → dernier « Logiciel Windows (.exe) » réussi → **Installeur-Broderies-de-Mamie**.
+Sur GitHub, page **Releases** → `Les.broderies.de.Mamie_x.y.z_x64-setup.exe`. Sinon, onglet **Actions** → dernier « Logiciel Windows (.exe) » réussi → **Installeur-Broderies-de-Mamie**.
 Dans le .zip, double-cliquer sur le fichier qui finit par `setup.exe`.
-Pour une page de téléchargement permanente : créer un tag `v1.0.0` (une « Release » est publiée toute seule).
+Plus simple : la page **Releases** du dépôt contient toujours le dernier installeur (publié automatiquement à chaque mise à jour de `main`).
 
 ## Organisation du code
 
