@@ -18,10 +18,30 @@ type Lib = Arc<Mutex<Library>>;
 
 #[derive(Default, Serialize, Deserialize)]
 struct Settings {
+    /// Clé personnelle (sinon on utilise celle fournie avec le logiciel).
     #[serde(default)]
     gemini_key: Option<String>,
     #[serde(default)]
     gemini_model: Option<String>,
+    /// La recherche intelligente a été désactivée.
+    #[serde(default)]
+    ai_disabled: bool,
+}
+
+/// Clé Gemini fournie avec le logiciel (secret GitHub GEMINI_API_KEY au moment de la fabrication).
+fn built_in_key() -> Option<String> {
+    const MIXED: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/gemini_key.bin"));
+    let mask = |i: usize| (0xA5u8 ^ (i as u8).wrapping_mul(31)).rotate_left((i % 7) as u32);
+    let key: String = MIXED.iter().enumerate().map(|(i, b)| (b ^ mask(i)) as char).collect();
+    (key.len() >= 20).then_some(key)
+}
+
+/// La clé à utiliser : la personnelle, sinon celle du logiciel ; aucune si c'est désactivé.
+fn effective_key(s: &Settings) -> Option<String> {
+    if s.ai_disabled {
+        return None;
+    }
+    s.gemini_key.clone().or_else(built_in_key)
 }
 
 fn settings_path(app: &AppHandle) -> Option<PathBuf> {
@@ -61,7 +81,8 @@ fn ai_status_of(app: &AppHandle) -> ai::AiStatus {
     let (_, pending) = l.ai_pending(0);
     let error = st.error.lock().unwrap_or_else(|e| e.into_inner()).clone();
     ai::AiStatus {
-        has_key: load_settings(app).gemini_key.is_some(),
+        has_key: effective_key(&load_settings(app)).is_some(),
+        built_in: built_in_key().is_some(),
         running: st.running.load(Ordering::SeqCst),
         analysed: total - pending,
         total,
@@ -76,7 +97,7 @@ fn emit_ai(app: &AppHandle) {
 /// Lance l'analyse des motifs pas encore regardés par l'IA (si une clé est enregistrée).
 fn start_ai(app: &AppHandle) {
     let settings = load_settings(app);
-    let Some(key) = settings.gemini_key else { return };
+    let Some(key) = effective_key(&settings) else { return };
     let st = app.state::<Arc<AiState>>().inner().clone();
     if st.running.swap(true, Ordering::SeqCst) {
         return; // déjà en route
@@ -189,23 +210,29 @@ async fn ai_set_key(app: AppHandle, key: String) -> Result<ai::AiStatus, String>
             ai::AiError::ModelNotFound => "Aucun modèle Gemini disponible pour cette clé.".to_string(),
             ai::AiError::Other(m) => m,
         })?;
-    save_settings(&app, &Settings { gemini_key: Some(key), gemini_model: Some(model) })?;
+    save_settings(&app, &Settings { gemini_key: Some(key), gemini_model: Some(model), ai_disabled: false })?;
     start_ai(&app);
     Ok(ai_status_of(&app))
 }
 
-/// Oublie la clé et arrête l'analyse (ce qui a déjà été analysé est gardé).
+/// Désactive la recherche intelligente (ce qui a déjà été analysé est gardé).
 #[tauri::command]
 fn ai_remove_key(app: AppHandle) -> Result<ai::AiStatus, String> {
     app.state::<Arc<AiState>>().stop.store(true, Ordering::SeqCst);
-    save_settings(&app, &Settings::default())?;
+    save_settings(&app, &Settings { ai_disabled: true, ..Default::default() })?;
     Ok(ai_status_of(&app))
 }
 
+/// (Ré)active la recherche intelligente et relance l'analyse.
 #[tauri::command]
-fn ai_start(app: AppHandle) -> ai::AiStatus {
+fn ai_start(app: AppHandle) -> Result<ai::AiStatus, String> {
+    let mut s = load_settings(&app);
+    if s.ai_disabled {
+        s.ai_disabled = false;
+        save_settings(&app, &s)?;
+    }
     start_ai(&app);
-    ai_status_of(&app)
+    Ok(ai_status_of(&app))
 }
 
 #[derive(Serialize)]

@@ -32,6 +32,7 @@ export async function initAi() {
   });
   $("aiRemove").addEventListener("click", async () => setStatus(await api.aiRemoveKey()));
   $("aiRetry").addEventListener("click", async () => setStatus(await api.aiStart()));
+  $("aiEnable").addEventListener("click", async () => setStatus(await api.aiStart()));
   api.onAiProgress(s => {
     setStatus(s);
     // Les nouveaux mots-clés de l'IA servent tout de suite à la recherche (sans recharger à chaque lot).
@@ -44,7 +45,7 @@ export async function initAi() {
 export function openAi() {
   render();
   $("aiDlg").showModal();
-  if (!status.hasKey) $("aiKey").focus();
+  if (!status.hasKey && !status.builtIn) $("aiKey").focus();
 }
 
 function setStatus(s) {
@@ -60,13 +61,14 @@ function render() {
   card.classList.toggle("error", Boolean(s.hasKey && s.error));
   $("aiBar").classList.toggle("hidden", !s.running);
   $("aiBarFill").style.width = pct + "%";
-  $("aiLine").textContent = !s.hasKey ? "À activer — gratuit"
+  $("aiLine").textContent = !s.hasKey ? (s.builtIn ? "Désactivée" : "À activer — gratuit")
     : s.error ? "Problème : cliquez pour voir"
     : s.running ? `L'IA regarde les motifs : ${s.analysed} / ${s.total}`
     : s.analysed >= s.total ? `Prête · ${plural(s.analysed, "motif analysé", "motifs analysés")}`
     : `En pause · ${s.analysed} / ${s.total}`;
 
-  $("aiSetup").classList.toggle("hidden", s.hasKey);
+  $("aiSetup").classList.toggle("hidden", s.hasKey || s.builtIn);
+  $("aiOff").classList.toggle("hidden", s.hasKey || !s.builtIn);
   $("aiActive").classList.toggle("hidden", !s.hasKey);
   $("aiRemove").classList.toggle("hidden", !s.hasKey);
   $("aiDlgBar").style.width = pct + "%";

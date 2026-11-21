@@ -33,6 +33,8 @@ pub struct Described {
 #[serde(rename_all = "camelCase")]
 pub struct AiStatus {
     pub has_key: bool,
+    /// Une clé est fournie avec le logiciel : pas besoin d'en créer une.
+    pub built_in: bool,
     pub running: bool,
     pub analysed: usize,
     pub total: usize,

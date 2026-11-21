@@ -1,6 +1,6 @@
 [package]
 name = "broderies-de-mamie"
-version = "1.0.4"
+version = "1.0.5"
 description = "Les broderies de Mamie"
 edition = "2021"
 

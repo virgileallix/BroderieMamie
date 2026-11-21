@@ -31,7 +31,7 @@
     saveZip: async p => "C:/" + p,
     thumbUrl: p => encodeURI(p), // servi par un petit serveur http local (voir dev/README.md)
     reveal: async () => {},
-    aiStatus: async () => window.__MOCK_AI__ || { hasKey: false, running: false, analysed: 0, total: entries.length, error: null },
+    aiStatus: async () => window.__MOCK_AI__ || { hasKey: false, builtIn: false, running: false, analysed: 0, total: entries.length, error: null },
     aiSetKey: async key => { await wait(500); if (key.length < 20) throw "Cette clé semble incomplète."; window.__MOCK_AI__ = { hasKey: true, running: true, analysed: 3, total: entries.length, error: null }; return window.__MOCK_AI__; },
     aiRemoveKey: async () => (window.__MOCK_AI__ = { hasKey: false, running: false, analysed: 3, total: entries.length, error: null }),
     aiStart: async () => window.__MOCK_AI__,

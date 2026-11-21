@@ -56,6 +56,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Clé Gemini par défaut pour la recherche intelligente (glissée brouillée dans le .exe).
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         with:
           # Sans la clé, l'installeur est quand même fabriqué, mais sans fichiers de mise à jour.
           args: ${{ env.HAS_UPDATER_KEY == 'true' && '--config src-tauri/tauri.updater.conf.json' || '' }}
