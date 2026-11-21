@@ -1,6 +1,6 @@
 //! Application de bureau : fait le lien entre l'interface (dossier `ui/`) et `broderie-core`.
 
-use broderie_core::library::{DedupeReport, Entry, EntryUpdate, ImportReport, Library};
+use broderie_core::library::{DuplicateGroup, Entry, EntryUpdate, GroupChoice, ImportReport, Library};
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -116,11 +116,13 @@ async fn get_design(lib: State<'_, Lib>, id: String) -> Result<DesignView, Strin
 }
 
 #[tauri::command]
-async fn dedupe_library(lib: State<'_, Lib>) -> Result<DedupeReport, String> {
-    let lib = lib.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || lock(&lib).dedupe())
-        .await
-        .map_err(|e| e.to_string())?
+fn find_duplicates(lib: State<Lib>) -> Vec<DuplicateGroup> {
+    lock(&lib).find_duplicates()
+}
+
+#[tauri::command]
+fn remove_duplicates(lib: State<Lib>, choices: Vec<GroupChoice>) -> Result<usize, String> {
+    lock(&lib).remove_duplicates(&choices)
 }
 
 #[tauri::command]
@@ -169,7 +171,8 @@ pub fn run() {
             delete_entry,
             get_design,
             export_entry,
-            dedupe_library,
+            find_duplicates,
+            remove_duplicates,
             backup
         ])
         .run(tauri::generate_context!())

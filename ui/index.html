@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="css/components.css">
   <link rel="stylesheet" href="css/layout.css">
   <link rel="stylesheet" href="css/detail.css">
+  <link rel="stylesheet" href="css/duplicates.css">
   <script type="module" src="js/main.js"></script>
 </head>
 <body>
@@ -23,10 +24,16 @@
         </div>
       </div>
 
-      <button class="btn btn-primary btn-block btn-lg" id="btnAdd">
-        <svg class="icon"><use href="#i-plus"/></svg>
-        Ajouter des broderies
-      </button>
+      <div class="add-group">
+        <button class="btn btn-primary btn-block btn-lg" id="btnAdd">
+          <svg class="icon"><use href="#i-plus"/></svg>
+          Ajouter des fichiers
+        </button>
+        <button class="btn btn-secondary btn-block" id="btnAddFolders" title="On peut en choisir plusieurs en maintenant la touche Ctrl">
+          <svg class="icon"><use href="#i-folder"/></svg>
+          Ajouter des dossiers
+        </button>
+      </div>
 
       <nav class="nav" id="nav" aria-label="Collections">
         <button class="nav-item" data-view="all"><span class="nav-dot"></span><span class="nav-label">Toutes</span><span class="nav-count" data-count="all"></span></button>
@@ -101,7 +108,7 @@
         <p class="muted" id="emptyText"></p>
         <div class="empty-actions" id="emptyActions">
           <button class="btn btn-primary btn-lg" data-action="add-files"><svg class="icon"><use href="#i-plus"/></svg>Choisir des fichiers</button>
-          <button class="btn btn-secondary btn-lg" data-action="add-folder"><svg class="icon"><use href="#i-folder"/></svg>Choisir un dossier</button>
+          <button class="btn btn-secondary btn-lg" data-action="add-folder"><svg class="icon"><use href="#i-folder"/></svg>Choisir des dossiers</button>
         </div>
       </div>
     </main>
@@ -196,10 +203,35 @@
           <div class="stat stat-dup"><strong id="sDup">0</strong><span id="sDupLbl">doublons retirés</span></div>
           <div class="stat stat-skip"><strong id="sSkip">0</strong><span id="sSkipLbl">autres fichiers ignorés</span></div>
         </div>
+        <div class="similar hidden" id="similarBox">
+          <p id="similarText"></p>
+          <button class="btn btn-secondary" id="similarBtn"><svg class="icon"><use href="#i-copy"/></svg>Voir les doublons</button>
+        </div>
         <details class="report hidden" id="dupDetails"><summary>Voir les doublons</summary><ul id="dupList"></ul></details>
         <details class="report hidden" id="probDetails" open><summary>Fichiers avec un problème</summary><ul id="probList"></ul></details>
         <button class="btn btn-primary btn-lg btn-block" data-close>Très bien</button>
       </div>
+    </div>
+  </dialog>
+
+  <!-- ============ Vérification des doublons ============ -->
+  <dialog class="sheet" id="dupSheet" aria-labelledby="dupTitle">
+    <div class="dup-layout">
+      <header class="dup-head">
+        <div>
+          <h2 id="dupTitle">Doublons à vérifier</h2>
+          <p class="muted" id="dupSub"></p>
+        </div>
+        <button class="btn btn-ghost" data-close><svg class="icon"><use href="#i-x"/></svg>Fermer</button>
+      </header>
+      <div class="dup-body" id="dupBody"></div>
+      <footer class="dup-foot" id="dupFoot">
+        <p id="dupCount"></p>
+        <div class="dup-actions">
+          <button class="btn btn-secondary btn-lg" data-close>Annuler</button>
+          <button class="btn btn-danger-solid btn-lg" id="dupApply"><svg class="icon"><use href="#i-trash"/></svg><span id="dupApplyLbl">Mettre à la corbeille</span></button>
+        </div>
+      </footer>
     </div>
   </dialog>
 

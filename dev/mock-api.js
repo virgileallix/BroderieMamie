@@ -23,9 +23,11 @@
     design: async id => data.designs[id],
     exportTo: async () => "E:/broderie.pes",
     backup: async () => entries.length,
-    dedupe: async () => { await wait(600); return window.__MOCK_DEDUPE__ || { removed: [], kept: entries.length }; },
+    findDuplicates: async () => { await wait(300); return (window.__MOCK_GROUPS__ || (data.groups || []).map(g => g.ids)).map(g => ({ ids: g.filter(id => entries.some(e => e.id === id)) })).filter(g => g.ids.length > 1); },
+    removeDuplicates: async choices => { let n = 0; for (const c of choices) for (const id of c.remove) { entries = entries.filter(e => e.id !== id); n++; } window.__MOCK_GROUPS__ = []; return n; },
     pickFiles: async () => ["C:/Users/Mamie/Téléchargements/motifs.zip"],
     pickFolder: async () => ["E:/"],
+    pickFolders: async () => ["C:/Users/Mamie/Broderies/Noël", "C:/Users/Mamie/Broderies/Fleurs"],
     saveZip: async p => "C:/" + p,
     thumbUrl: p => encodeURI(p), // servi par un petit serveur http local (voir dev/README.md)
     reveal: async () => {},

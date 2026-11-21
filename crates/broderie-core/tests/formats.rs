@@ -1,6 +1,6 @@
 //! Formats supplémentaires et repérage du même motif dans plusieurs formats.
 //! Valeurs de référence : pyembroidery (fichiers générés par pyembroidery, sauf HUS et SEW faits à la main).
-use broderie_core::{library::EntryUpdate, parse_named, shape_similarity, Format, Library};
+use broderie_core::{library::EntryUpdate, parse_named, shape_similarity, Format, GroupChoice, Library};
 use std::fs;
 use std::path::PathBuf;
 
@@ -40,62 +40,68 @@ fn meme_motif_dans_plusieurs_formats() {
 }
 
 #[test]
-fn import_garde_le_pes() {
+fn doublons_montres_puis_choisis() {
     let dir = tempfile::tempdir().unwrap();
     let mut lib = Library::open(dir.path()).unwrap();
-    // D'abord la version Janome, avec un mot-clé et une étoile…
     let r = lib.import(&[fx("Rose_ancienne.jef"), fx("Ourson_Leon.hus")], |_, _, _| {});
     assert_eq!(r.added.len(), 2);
-    let id = r.added[0].id.clone();
-    lib.update(&id, EntryUpdate { name: Some("Rose de Mamie".into()), tags: Some(vec!["fleurs".into()]), favorite: Some(true) }).unwrap();
-    // … puis les autres formats : le PES remplace le JEF, les autres sont des doublons.
+    let jef = r.added[0].id.clone();
+    lib.update(&jef, EntryUpdate { tags: Some(vec!["fleurs".into()]), favorite: Some(true), ..Default::default() }).unwrap();
+
+    // DST et EXP ont exactement les mêmes points que le JEF : écartés d'office (rien n'est perdu,
+    // les originaux restent où ils sont). Les PES sont ajoutés, mais signalés comme ressemblants.
     let r = lib.import(&[fx("Rose_ancienne.dst"), fx("Rose_ancienne.pes"), fx("Rose_ancienne.exp"), fx("Ourson_Leon.pes")], |_, _, _| {});
-    assert!(r.added.is_empty(), "{r:?}");
-    assert_eq!(r.replaced.len(), 2, "{r:?}");
+    assert_eq!(r.added.len(), 2, "{r:?}");
     assert_eq!(r.duplicates.len(), 2, "{r:?}");
-    assert_eq!(lib.entries().len(), 2);
-    let rose = lib.entries().iter().find(|e| e.name == "Rose de Mamie").unwrap();
-    assert_eq!(rose.format.as_deref(), Some("PES"));
-    assert_eq!(rose.file_name, "Rose de Mamie.pes");
-    assert_eq!(rose.tags, ["fleurs"]);
-    assert!(rose.favorite);
-    assert!(lib.thumb_path(&rose.id).exists());
-    assert!(dir.path().join("Corbeille/Rose de Mamie.jef").exists());
-    assert!(lib.entries().iter().all(|e| e.format.as_deref() == Some("PES")));
-    // La bibliothèque se rouvre avec les empreintes.
+    assert_eq!(r.similar.len(), 2, "{r:?}");
+    assert_eq!(lib.entries().len(), 4);
+
+    // Deux groupes ; le PES est proposé en premier (à garder). Rien n'a encore été supprimé.
+    let groups = lib.find_duplicates();
+    assert_eq!(groups.len(), 2, "{groups:?}");
+    let fmt = |id: &str| lib.get(id).unwrap().format.clone().unwrap();
+    for g in &groups {
+        assert_eq!(g.ids.len(), 2);
+        assert_eq!(fmt(&g.ids[0]), "PES");
+    }
+    let rose = groups.iter().find(|g| g.ids.contains(&jef)).unwrap().clone();
+    let ourson = groups.iter().find(|g| !g.ids.contains(&jef)).unwrap().clone();
+
+    // Mamie met le JEF de la rose à la corbeille, et garde les deux oursons.
+    let n = lib
+        .remove_duplicates(&[
+            GroupChoice { keep: vec![rose.ids[0].clone()], remove: vec![jef.clone()] },
+            GroupChoice { keep: ourson.ids.clone(), remove: vec![] },
+        ])
+        .unwrap();
+    assert_eq!(n, 1);
+    assert_eq!(lib.entries().len(), 3);
+    let kept = lib.get(&rose.ids[0]).unwrap();
+    assert_eq!(kept.tags, ["fleurs"]);
+    assert!(kept.favorite);
+    assert!(dir.path().join("Corbeille/Rose ancienne.jef").exists());
+
+    // Les oursons gardés ensemble ne sont plus proposés, même après réouverture.
     let lib = Library::open(dir.path()).unwrap();
+    assert!(lib.find_duplicates().is_empty());
     assert!(lib.entries().iter().all(|e| e.shape.is_some()));
 }
 
 #[test]
-fn nettoyage_des_doublons_existants() {
-    // Une ancienne collection pleine de doublons : on assemble à la main l'index de deux bibliothèques.
-    let a = tempfile::tempdir().unwrap();
-    let b = tempfile::tempdir().unwrap();
-    Library::open(a.path()).unwrap().import(&[fx("Rose_ancienne.jef"), fx("Sapin_enneige.sew")], |_, _, _| {});
-    let mut lb = Library::open(b.path()).unwrap();
-    lb.import(&[fx("Rose_ancienne.pes")], |_, _, _| {});
-    let id = lb.entries()[0].id.clone();
-    lb.update(&id, EntryUpdate { tags: Some(vec!["Noël".into()]), ..Default::default() }).unwrap();
-    for e in lb.entries() {
-        fs::copy(b.path().join("Motifs").join(&e.file_name), a.path().join("Motifs").join(&e.file_name)).unwrap();
+fn rien_ne_sort_du_dossier_de_la_bibliotheque() {
+    // Les fichiers d'origine ne sont jamais modifiés ni supprimés.
+    let src = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    for f in ["Rose_ancienne.jef", "Rose_ancienne.pes"] {
+        fs::copy(fx(f), src.path().join(f)).unwrap();
     }
-    let mut ja: serde_json::Value = serde_json::from_slice(&fs::read(a.path().join("bibliotheque.json")).unwrap()).unwrap();
-    let jb: serde_json::Value = serde_json::from_slice(&fs::read(b.path().join("bibliotheque.json")).unwrap()).unwrap();
-    for mut e in jb["entries"].as_array().unwrap().clone() {
-        e["shape"] = serde_json::Value::Null; // ancienne version, sans empreinte
-        ja["entries"].as_array_mut().unwrap().push(e);
+    let mut lib = Library::open(dir.path()).unwrap();
+    lib.import(&[src.path().to_path_buf()], |_, _, _| {});
+    let g = lib.find_duplicates();
+    lib.remove_duplicates(&[GroupChoice { keep: vec![g[0].ids[0].clone()], remove: g[0].ids[1..].to_vec() }]).unwrap();
+    let id = lib.entries()[0].id.clone();
+    lib.delete(&id).unwrap();
+    for f in ["Rose_ancienne.jef", "Rose_ancienne.pes"] {
+        assert_eq!(fs::read(src.path().join(f)).unwrap(), fs::read(fx(f)).unwrap());
     }
-    fs::write(a.path().join("bibliotheque.json"), serde_json::to_vec(&ja).unwrap()).unwrap();
-
-    let mut lib = Library::open(a.path()).unwrap();
-    assert_eq!(lib.entries().len(), 3);
-    let rep = lib.dedupe().unwrap();
-    assert_eq!(rep.removed.len(), 1, "{rep:?}");
-    assert_eq!(rep.kept, 2);
-    let rose = lib.entries().iter().find(|e| e.name == "Rose ancienne").unwrap();
-    assert_eq!(rose.format.as_deref(), Some("PES"));
-    assert_eq!(rose.tags, ["Noël"]);
-    assert!(a.path().join("Corbeille/Rose ancienne.jef").exists());
-    assert!(lib.dedupe().unwrap().removed.is_empty());
 }

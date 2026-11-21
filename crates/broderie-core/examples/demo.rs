@@ -34,7 +34,7 @@ fn main() {
         .collect();
     let out = serde_json::json!({
         "root": root, "thumbs": root.join("Aperçus"), "entries": lib.entries(),
-        "report": report, "designs": designs
+        "report": report, "designs": designs, "groups": lib.find_duplicates()
     });
     println!("{out}");
 }

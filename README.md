@@ -3,11 +3,15 @@
 Logiciel Windows pour ranger, retrouver et voir ses motifs de broderie machine :
 **.pes** (Brother), .pec, **.jef** et .sew (Janome), **.vp3**/.pv3 et **.vip** (Pfaff), **.hus** (Husqvarna), .exp (Melco), .dst (Tajima).
 
-- **Ajouter** des fichiers, un dossier entier ou un **.zip** (bouton, ou glisser-déposer depuis l'Explorateur).
-- **Doublons supprimés automatiquement** : même fichier sous un autre nom, ou **même motif** (même taille,
-  même dessin) dans un autre format. On garde toujours la version **PES** (la machine est une Brother) ;
-  un compte rendu dit ce qui a été ajouté, remplacé et retiré. Le bouton **« Chercher les doublons »**
-  fait le ménage dans ce qui est déjà rangé (les mots-clés et étoiles sont conservés).
+- **Ajouter** des fichiers, **plusieurs dossiers d'un coup** ou des **.zip** (boutons, ou glisser-déposer depuis l'Explorateur).
+- **Doublons** : un fichier strictement identique (même contenu, mêmes points) n'est pas ajouté deux fois.
+  Le **même motif** dans un autre format ou une autre version (même taille, même dessin) est repéré, et
+  **« Chercher les doublons »** les montre côte à côte : on choisit ce qu'on garde (le PES est conseillé, la
+  machine est une Brother). Les mots-clés et étoiles passent à la broderie gardée ; une paire gardée exprès
+  n'est plus reproposée.
+
+**Rien n'est jamais effacé de l'ordinateur** : les fichiers d'origine ne sont que copiés dans la bibliothèque,
+jamais modifiés ni supprimés. « Supprimer » range la copie dans le dossier `Corbeille` de la bibliothèque.
 - **Rechercher** par nom, mot-clé ou couleur (sans se soucier des accents) ; favoris ; mots-clés dans le menu.
 - **Voir** chaque motif en grand avec ses vraies couleurs, zoom, fond lin/blanc/noir, cadre conseillé,
   et l'animation **« Voir la broderie se faire »** point par point.

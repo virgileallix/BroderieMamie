@@ -95,6 +95,10 @@ fn same_motif(e: &Entry, w: f32, h: f32, stitches: usize, shape: &[u8]) -> bool 
 struct IndexFile {
     version: u32,
     entries: Vec<Entry>,
+    /// Paires de fichiers (empreintes) que Mamie a décidé de garder toutes les deux :
+    /// on ne les lui repropose plus comme doublons.
+    #[serde(default)]
+    distinct: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -109,18 +113,27 @@ pub struct Duplicate {
 pub struct ImportReport {
     pub added: Vec<Entry>,
     pub duplicates: Vec<Duplicate>,
-    /// Motifs déjà présents dans un autre format, remplacés par la version PES qu'on vient d'ajouter.
-    pub replaced: Vec<Duplicate>,
+    /// Ajoutées, mais qui ressemblent à une broderie déjà rangée (même motif, autre format…) :
+    /// à vérifier avec « Chercher les doublons ».
+    pub similar: Vec<Duplicate>,
     pub ignored: usize,
     pub problems: Vec<String>,
 }
 
-#[derive(Debug, Default, Clone, Serialize)]
+/// Un groupe de broderies qui semblent être le même motif. La première est celle qu'on
+/// conseille de garder (le PES, sinon la plus ancienne).
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DedupeReport {
-    /// Les broderies retirées (rangées dans la Corbeille) et celle qui est gardée à leur place.
-    pub removed: Vec<Duplicate>,
-    pub kept: usize,
+pub struct DuplicateGroup {
+    pub ids: Vec<String>,
+}
+
+/// Ce que Mamie a choisi pour un groupe : les broderies gardées et celles à mettre à la corbeille.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupChoice {
+    pub keep: Vec<String>,
+    pub remove: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -134,6 +147,11 @@ pub struct EntryUpdate {
 pub struct Library {
     root: PathBuf,
     entries: Vec<Entry>,
+    distinct: HashSet<(String, String)>,
+}
+
+fn pair(a: &str, b: &str) -> (String, String) {
+    if a <= b { (a.to_string(), b.to_string()) } else { (b.to_string(), a.to_string()) }
 }
 
 /// Un fichier à importer : soit un fichier du disque, soit un fichier sorti d'un .zip.
@@ -193,11 +211,12 @@ impl Library {
         for d in [MOTIFS, TRASH, THUMBS] {
             fs::create_dir_all(root.join(d))?;
         }
-        let entries = match fs::read(root.join(INDEX)) {
-            Ok(b) => serde_json::from_slice::<IndexFile>(&b).map(|i| i.entries).unwrap_or_default(),
-            Err(_) => Vec::new(),
-        };
-        let mut lib = Library { root, entries };
+        let index = fs::read(root.join(INDEX))
+            .ok()
+            .and_then(|b| serde_json::from_slice::<IndexFile>(&b).ok())
+            .unwrap_or_default();
+        let (entries, distinct) = (index.entries, index.distinct.into_iter().collect());
+        let mut lib = Library { root, entries, distinct };
         // Les fichiers effacés à la main du dossier disparaissent aussi de la liste.
         let before = lib.entries.len();
         let motifs = lib.root.join(MOTIFS);
@@ -253,7 +272,9 @@ impl Library {
     }
 
     fn save(&self) -> io::Result<()> {
-        let idx = IndexFile { version: 1, entries: self.entries.clone() };
+        let mut distinct: Vec<_> = self.distinct.iter().cloned().collect();
+        distinct.sort();
+        let idx = IndexFile { version: 1, entries: self.entries.clone(), distinct };
         let json = serde_json::to_vec_pretty(&idx).map_err(io::Error::other)?;
         let tmp = self.root.join(format!("{INDEX}.tmp"));
         fs::write(&tmp, json)?;
@@ -293,29 +314,28 @@ impl Library {
             }
             let parsed = design::parse_named(&bytes, &original);
             let dh = parsed.as_ref().ok().map(|d| d.design_hash());
+            let mut similar_to = None;
             if let Ok(d) = &parsed {
-                // Le même motif est-il déjà là (même dessin, éventuellement dans un autre format) ?
-                let shape = d.shape();
-                let found = self.entries.iter().position(|e| {
-                    e.design_hash.as_deref() == dh.as_deref()
-                        || same_motif(e, d.width_mm(), d.height_mm(), d.stitch_count, &shape)
-                });
-                if let Some(i) = found {
-                    let same_as = self.entries[i].name.clone();
-                    if d.format.preference() < self.entries[i].preference() {
-                        // On garde la version PES : elle remplace l'autre format.
-                        match self.replace_file(i, &original, &bytes, fh, d, dh) {
-                            Ok(()) => report.replaced.push(Duplicate { file: original, same_as }),
-                            Err(e) => report.problems.push(format!("{original} : {e}")),
-                        }
-                    } else {
-                        report.duplicates.push(Duplicate { file: original, same_as });
-                    }
+                // Exactement les mêmes points, dans un format qui n'est pas meilleur : rien à ajouter.
+                if let Some(e) = self.entries.iter().find(|e| {
+                    e.design_hash.as_deref() == dh.as_deref() && d.format.preference() >= e.preference()
+                }) {
+                    report.duplicates.push(Duplicate { file: original, same_as: e.name.clone() });
                     continue;
                 }
+                // Le même motif autrement (autre format, autre version) : on l'ajoute, mais on le signale.
+                let shape = d.shape();
+                similar_to = self
+                    .entries
+                    .iter()
+                    .find(|e| e.design_hash.as_deref() == dh.as_deref() || same_motif(e, d.width_mm(), d.height_mm(), d.stitch_count, &shape))
+                    .map(|e| e.name.clone());
             }
             match self.add(&original, &bytes, fh, parsed.as_ref().ok(), dh, k) {
                 Ok(entry) => {
+                    if let Some(same_as) = similar_to {
+                        report.similar.push(Duplicate { file: original.clone(), same_as });
+                    }
                     if let Err(e) = &parsed {
                         report.problems.push(format!("{original} : ajoutée, mais l'aperçu n'a pas pu être fait ({e})"));
                     }
@@ -325,7 +345,7 @@ impl Library {
             }
         }
         progress(total, total, "");
-        if !report.added.is_empty() || !report.replaced.is_empty() {
+        if !report.added.is_empty() {
             if let Err(e) = self.save() {
                 report.problems.push(format!("Impossible d'enregistrer la liste : {e}"));
             }
@@ -383,49 +403,6 @@ impl Library {
         Ok(entry)
     }
 
-    /// Remplace le fichier d'une broderie par une autre version du même motif (le PES),
-    /// en gardant son nom, ses mots-clés et son étoile. L'ancien fichier va à la corbeille.
-    fn replace_file(
-        &mut self,
-        i: usize,
-        original: &str,
-        bytes: &[u8],
-        fh: String,
-        d: &Design,
-        dh: Option<String>,
-    ) -> io::Result<()> {
-        let ext = ext_of(original);
-        let old = self.entries[i].clone();
-        self.move_to_trash(&old.file_name, &old.name);
-        let file_name = self.unique_file_name(&old.name, &ext, None);
-        fs::write(self.motifs_dir().join(&file_name), bytes)?;
-        let _ = fs::remove_file(self.thumb_path(&old.id));
-        let mut id = fh[..12].to_string();
-        while self.get(&id).is_some() {
-            id.push('x');
-        }
-        if let Some(png) = render::render_png(d, THUMB_SIZE) {
-            let _ = fs::write(self.thumb_path(&id), png);
-        }
-        let e = &mut self.entries[i];
-        e.id = id;
-        e.file_name = file_name;
-        e.original_name = original.to_string();
-        e.ext = ext.to_uppercase();
-        e.format = Some(d.format.label().to_string());
-        e.size = bytes.len() as u64;
-        e.file_hash = fh;
-        e.design_hash = dh;
-        e.width_mm = d.width_mm();
-        e.height_mm = d.height_mm();
-        e.stitches = d.stitch_count;
-        e.colors = d.threads();
-        e.label = d.label.clone();
-        e.read_error = None;
-        e.set_shape(d);
-        Ok(())
-    }
-
     /// Range un fichier du dossier « Motifs » dans la « Corbeille ».
     fn move_to_trash(&self, file_name: &str, name: &str) {
         let src = self.motifs_dir().join(file_name);
@@ -440,53 +417,73 @@ impl Library {
         }
     }
 
-    /// Cherche les doublons déjà présents dans la collection : le même motif en plusieurs
-    /// exemplaires ou plusieurs formats. On garde le PES (sinon le plus ancien), on lui
-    /// ajoute les mots-clés et l'étoile des autres, et les autres vont à la corbeille.
-    pub fn dedupe(&mut self) -> Result<DedupeReport, String> {
+    /// Cherche les doublons dans la collection, sans rien supprimer : le même motif en plusieurs
+    /// exemplaires ou plusieurs formats. Les paires déjà gardées par Mamie sont ignorées.
+    pub fn find_duplicates(&self) -> Vec<DuplicateGroup> {
         let mut order: Vec<usize> = (0..self.entries.len()).collect();
         order.sort_by_key(|&i| (self.entries[i].preference(), self.entries[i].added_at));
-        let mut kept: Vec<usize> = Vec::new();
-        let mut removed: Vec<(usize, usize)> = Vec::new();
+        let mut groups: Vec<Vec<usize>> = Vec::new();
         for i in order {
             let e = &self.entries[i];
-            let twin = kept.iter().copied().find(|&k| {
-                let o = &self.entries[k];
-                o.file_hash == e.file_hash
-                    || (e.design_hash.is_some() && o.design_hash == e.design_hash)
-                    || e.shape_bits.as_deref().is_some_and(|s| same_motif(o, e.width_mm, e.height_mm, e.stitches, s))
+            let twin = groups.iter().position(|g| {
+                let o = &self.entries[g[0]];
+                !self.distinct.contains(&pair(&o.file_hash, &e.file_hash))
+                    && (o.file_hash == e.file_hash
+                        || (e.design_hash.is_some() && o.design_hash == e.design_hash)
+                        || e.shape_bits.as_deref().is_some_and(|s| same_motif(o, e.width_mm, e.height_mm, e.stitches, s)))
             });
             match twin {
-                Some(k) => removed.push((i, k)),
-                None => kept.push(i),
+                Some(g) => groups[g].push(i),
+                None => groups.push(vec![i]),
             }
         }
-        let mut report = DedupeReport { kept: kept.len(), ..Default::default() };
-        for &(i, k) in &removed {
-            let (tags, fav) = (self.entries[i].tags.clone(), self.entries[i].favorite);
-            let keep = &mut self.entries[k];
-            for t in tags {
-                if !keep.tags.iter().any(|x| x.to_lowercase() == t.to_lowercase()) {
-                    keep.tags.push(t);
+        groups
+            .into_iter()
+            .filter(|g| g.len() > 1)
+            .map(|g| DuplicateGroup { ids: g.into_iter().map(|i| self.entries[i].id.clone()).collect() })
+            .collect()
+    }
+
+    /// Applique les choix de Mamie : les broderies cochées vont à la corbeille (leurs mots-clés
+    /// et leur étoile passent à celle qu'on garde), et les broderies gardées ensemble ne seront
+    /// plus proposées comme doublons. Renvoie le nombre de broderies mises à la corbeille.
+    pub fn remove_duplicates(&mut self, choices: &[GroupChoice]) -> Result<usize, String> {
+        let mut removed = 0;
+        for c in choices {
+            let Some(target) = c.keep.first().and_then(|id| self.entries.iter().position(|e| &e.id == id)) else {
+                continue; // on garde toujours au moins une broderie par groupe
+            };
+            for id in &c.remove {
+                let Some(i) = self.entries.iter().position(|e| &e.id == id) else { continue };
+                if i == target || c.keep.contains(id) {
+                    continue;
+                }
+                let gone = self.entries[i].clone();
+                let keep = &mut self.entries[target];
+                for t in &gone.tags {
+                    if !keep.tags.iter().any(|x| x.to_lowercase() == t.to_lowercase()) {
+                        keep.tags.push(t.clone());
+                    }
+                }
+                keep.favorite |= gone.favorite;
+                self.move_to_trash(&gone.file_name, &gone.name);
+                let _ = fs::remove_file(self.thumb_path(&gone.id));
+                self.entries.retain(|e| e.id != gone.id);
+                removed += 1;
+            }
+            let kept: Vec<String> = c
+                .keep
+                .iter()
+                .filter_map(|id| self.get(id).map(|e| e.file_hash.clone()))
+                .collect();
+            for (k, a) in kept.iter().enumerate() {
+                for b in &kept[k + 1..] {
+                    self.distinct.insert(pair(a, b));
                 }
             }
-            keep.favorite |= fav;
-            let gone = &self.entries[i];
-            report.removed.push(Duplicate { file: gone.file_name.clone(), same_as: self.entries[k].name.clone() });
-            self.move_to_trash(&gone.file_name, &gone.name);
-            let _ = fs::remove_file(self.thumb_path(&gone.id));
         }
-        if !removed.is_empty() {
-            let gone: HashSet<usize> = removed.iter().map(|&(i, _)| i).collect();
-            let mut i = 0;
-            self.entries.retain(|_| {
-                let keep = !gone.contains(&i);
-                i += 1;
-                keep
-            });
-            self.save().map_err(|e| e.to_string())?;
-        }
-        Ok(report)
+        self.save().map_err(|e| e.to_string())?;
+        Ok(removed)
     }
 
     fn unique_file_name(&self, name: &str, ext: &str, except: Option<&str>) -> String {

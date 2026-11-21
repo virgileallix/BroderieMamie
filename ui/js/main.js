@@ -2,7 +2,8 @@
 import { api, available } from "./api.js";
 import { initDetail, openDetail } from "./detail-view.js";
 import { confirmBox, showError, toast } from "./dialogs.js";
-import { addFiles, addFolder, findDuplicates, importPaths, initImport } from "./import-view.js";
+import { openDuplicates, initDuplicates } from "./duplicates-view.js";
+import { addFiles, addFolder, importPaths, initImport } from "./import-view.js";
 import { initLibrary, render } from "./library-view.js";
 import { state, setEntries, onChange } from "./state.js";
 import { $ } from "./util.js";
@@ -16,6 +17,7 @@ async function start() {
   initLibrary({ onOpen: openDetail });
   initDetail();
   initImport();
+  initDuplicates();
   onChange(render);
 
   $("btnAdd").addEventListener("click", addFiles);
@@ -23,7 +25,8 @@ async function start() {
   for (const b of document.querySelectorAll("[data-action=add-folder]")) b.addEventListener("click", addFolder);
   $("btnFolder").addEventListener("click", () => api.reveal(state.root).catch(showError));
   $("btnBackup").addEventListener("click", backup);
-  $("btnDedupe").addEventListener("click", findDuplicates);
+  $("btnDedupe").addEventListener("click", openDuplicates);
+  $("btnAddFolders").addEventListener("click", addFolder);
 
   // Glisser-déposer des fichiers depuis l'Explorateur
   api.onDragDrop(p => {
