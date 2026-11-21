@@ -76,7 +76,8 @@ function item(g, id, i) {
     el("div", { class: "dup-info" },
       el("strong", {}, e.name),
       el("span", {}, e.widthMM ? `${size(e.widthMM, e.heightMM)} · ${plural(e.stitches, "point")}` : ""),
-      el("span", {}, `Fichier « ${e.fileName} »`),
+      el("span", {}, `Fichier « ${e.fileName.split("/").pop()} »`),
+      e.folder ? el("span", {}, `Dossier « ${e.folder} »`) : null,
       e.tags.length ? el("span", {}, "Mots-clés : " + e.tags.join(", ")) : null),
     el("button", {
       class: "dup-toggle",

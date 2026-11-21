@@ -1,16 +1,17 @@
 //! Crée une bibliothèque de démonstration et exporte ses données pour tester l'interface
 //! dans un navigateur (voir `dev/`).
 //!
-//! cargo run -p broderie-core --example demo -- <dossier source> <dossier bibliothèque>
+//! cargo run -p broderie-core --example demo -- <dossiers, .zip ou fichiers sources…> <dossier bibliothèque>
 
 use broderie_core::Library;
 use std::path::PathBuf;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let (src, root) = (PathBuf::from(&args[1]), PathBuf::from(&args[2]));
+    let root = PathBuf::from(args.last().unwrap());
+    let srcs: Vec<PathBuf> = args[1..args.len() - 1].iter().map(PathBuf::from).collect();
     let mut lib = Library::open(&root).expect("bibliothèque");
-    let report = lib.import(&[src], |_, _, _| {});
+    let report = lib.import(&srcs, |_, _, _| {});
     eprintln!("{} ajoutées, {} doublons", report.added.len(), report.duplicates.len());
     let designs: serde_json::Map<String, serde_json::Value> = lib
         .entries()

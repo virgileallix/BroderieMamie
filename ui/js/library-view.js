@@ -1,7 +1,7 @@
 // Écran principal : menu de gauche et grille des broderies.
 import { api } from "./api.js";
 import { showError, toast } from "./dialogs.js";
-import { state, counts, allTags, visible, viewTitle, upsert, emit, fmtOf } from "./state.js";
+import { state, counts, allTags, allFolders, visible, viewTitle, upsert, emit, fmtOf } from "./state.js";
 import { $, el, icon, joinPath, plural, size, prefs } from "./util.js";
 
 const PAGE = 150;
@@ -63,6 +63,14 @@ function renderNav() {
       el("span", { class: "nav-hash" }, "#"), el("span", { class: "nav-label" }, t.name), el("span", { class: "nav-count" }, t.n));
   }));
   $("tagHint").classList.toggle("hidden", tags.length > 0);
+  const folders = allFolders();
+  const folderItem = (view, label, n, extra) => el("button", { class: "nav-item", "data-view": view, title: label },
+    icon("folder", "icon nav-ico"), el("span", { class: "nav-label" + (extra ? " nav-label-soft" : "") }, label), el("span", { class: "nav-count" }, n));
+  $("folderNav").replaceChildren(
+    ...folders.list.map(f => folderItem("dir:" + f.name, f.name, f.n)),
+    folders.list.length && folders.loose ? folderItem("dir:", "Ajoutées une par une", folders.loose, true) : null);
+  $("folderHint").classList.toggle("hidden", folders.list.length > 0);
+  if (state.view.startsWith("dir:") && state.view !== "dir:" && !folders.list.some(f => "dir:" + f.name === state.view)) state.view = "all";
   // Si le mot-clé affiché n'existe plus, on revient à « Toutes ».
   if (state.view.startsWith("tag:") && !tags.some(t => "tag:" + t.name === state.view)) state.view = "all";
   for (const b of document.querySelectorAll(".nav-item")) b.setAttribute("aria-current", b.dataset.view === state.view);
@@ -110,6 +118,7 @@ function card(e) {
   const body = el("div", { class: "card-body" },
     el("div", { class: "card-name", title: e.name }, e.name),
     el("div", { class: "card-meta" }, e.widthMM ? size(e.widthMM, e.heightMM) : e.originalName),
+    e.folder && !state.view.startsWith("dir:") ? el("div", { class: "card-folder", title: "Dossier « " + e.folder + " »" }, icon("folder"), e.folder) : null,
     e.colors.length ? el("div", { class: "card-dots", "aria-label": plural(e.colors.length, "couleur") },
       shownColors.map(c => el("span", { style: `background:${c.color}`, title: c.name || c.color })),
       e.colors.length > 8 ? el("em", {}, "+" + (e.colors.length - 8)) : null) : null);

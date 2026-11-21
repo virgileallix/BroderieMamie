@@ -26,6 +26,7 @@
 .nav-item[aria-current="true"] .nav-ico { color: var(--brand-sage); }
 .nav-tag { font-size: 11px; font-weight: 900; letter-spacing: .06em; padding: 3px 6px; border-radius: 6px; background: var(--text-ink); color: var(--bg-surface); flex: none; }
 .nav-hash { width: 22px; text-align: center; color: var(--brand-rose); font-weight: 900; flex: none; }
+.nav-label-soft { font-style: italic; color: var(--text-muted); }
 .nav-hint { margin: 4px 12px; font-size: var(--fs-xs); color: var(--text-muted); line-height: 1.4; }
 
 .sidebar-foot { display: flex; flex-direction: column; gap: 6px; padding-top: 14px; border-top: 1px solid var(--border-line); }

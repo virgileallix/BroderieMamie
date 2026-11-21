@@ -348,7 +348,7 @@ dependencies = [
 
 [[package]]
 name = "broderies-de-mamie"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "broderie-core",
  "dirs 6.0.0",

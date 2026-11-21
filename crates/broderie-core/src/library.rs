@@ -2,7 +2,8 @@
 //!
 //! ```text
 //! Broderies de Mamie/
-//! ├── Motifs/              ← les fichiers (.pes, .jef, .vp3…), lisibles par n'importe quel logiciel
+//! ├── Motifs/              ← les fichiers (.pes, .jef, .vp3…), rangés par dossier importé
+//! │   ├── Noël/            ← un dossier par dossier ou .zip ajouté, à son nom
 //! ├── Corbeille/           ← les broderies supprimées (rien n'est jamais vraiment perdu)
 //! ├── Aperçus/             ← les petites images des motifs (refaites automatiquement)
 //! └── bibliotheque.json    ← noms, mots-clés, favoris, empreintes
@@ -29,8 +30,11 @@ const THUMB_SIZE: u32 = 360;
 pub struct Entry {
     pub id: String,
     pub name: String,
-    /// Nom du fichier dans le dossier « Motifs ».
+    /// Chemin du fichier dans le dossier « Motifs » (« Noël/Rose.pes », toujours avec « / »).
     pub file_name: String,
+    /// Le dossier (ou le .zip) d'où vient la broderie ; vide si elle a été ajoutée seule.
+    #[serde(default)]
+    pub folder: String,
     pub original_name: String,
     pub ext: String,
     pub format: Option<String>,
@@ -106,6 +110,15 @@ struct IndexFile {
 pub struct Duplicate {
     pub file: String,
     pub same_as: String,
+    /// Le dossier où se trouve la broderie déjà rangée (vide si aucun).
+    #[serde(default)]
+    pub same_folder: String,
+}
+
+impl Duplicate {
+    fn of(file: String, e: &Entry) -> Self {
+        Duplicate { file, same_as: e.name.clone(), same_folder: e.folder.clone() }
+    }
 }
 
 #[derive(Debug, Default, Clone, Serialize)]
@@ -156,23 +169,36 @@ fn pair(a: &str, b: &str) -> (String, String) {
 
 /// Un fichier à importer : soit un fichier du disque, soit un fichier sorti d'un .zip.
 enum Source {
-    Path(PathBuf),
-    Bytes(String, Vec<u8>),
+    Path(PathBuf, String),
+    Bytes(String, Vec<u8>, String),
 }
 
 impl Source {
     fn name(&self) -> String {
         match self {
-            Source::Path(p) => p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
-            Source::Bytes(n, _) => n.clone(),
+            Source::Path(p, _) => p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            Source::Bytes(n, _, _) => n.clone(),
+        }
+    }
+    /// Le dossier de la bibliothèque où ranger la broderie.
+    fn folder(&self) -> String {
+        match self {
+            Source::Path(_, f) | Source::Bytes(_, _, f) => f.clone(),
         }
     }
     fn bytes(self) -> io::Result<Vec<u8>> {
         match self {
-            Source::Path(p) => fs::read(p),
-            Source::Bytes(_, b) => Ok(b),
+            Source::Path(p, _) => fs::read(p),
+            Source::Bytes(_, b, _) => Ok(b),
         }
     }
+}
+
+/// Nom de dossier (ou de .zip) utilisable comme dossier de la bibliothèque.
+fn folder_name(p: &Path) -> String {
+    let stem = p.file_stem().map(|s| s.to_string_lossy().replace('_', " ")).unwrap_or_default();
+    let s = safe_file_stem(&stem);
+    if s == "broderie" && stem.trim().is_empty() { String::new() } else { s }
 }
 
 fn now_ms() -> u64 {
@@ -220,7 +246,7 @@ impl Library {
         // Les fichiers effacés à la main du dossier disparaissent aussi de la liste.
         let before = lib.entries.len();
         let motifs = lib.root.join(MOTIFS);
-        lib.entries.retain(|e| motifs.join(&e.file_name).exists());
+        lib.entries.retain(|e| { let mut p = motifs.clone(); p.extend(e.file_name.split('/')); p.exists() });
         let mut changed = lib.entries.len() != before;
         // Empreintes de forme (calculées une fois pour les anciennes broderies) et aperçus manquants.
         for i in 0..lib.entries.len() {
@@ -228,7 +254,7 @@ impl Library {
             let bits = e.shape.as_deref().and_then(design::from_hex);
             let thumb_missing = !lib.thumb_path(&e.id).exists();
             if e.format.is_some() && (bits.is_none() || thumb_missing) {
-                if let Ok(d) = fs::read(motifs.join(&e.file_name))
+                if let Ok(d) = fs::read(lib.file_path(e))
                     .map_err(|_| ())
                     .and_then(|b| design::parse_named(&b, &e.file_name).map_err(|_| ()))
                 {
@@ -265,7 +291,13 @@ impl Library {
         self.root.join(THUMBS).join(format!("{id}.png"))
     }
     pub fn file_path(&self, e: &Entry) -> PathBuf {
-        self.root.join(MOTIFS).join(&e.file_name)
+        self.motif_path(&e.file_name)
+    }
+    /// Chemin sur le disque d'un fichier de « Motifs » (« Noël/Rose.pes » → …\Motifs\Noël\Rose.pes).
+    fn motif_path(&self, rel: &str) -> PathBuf {
+        let mut p = self.root.join(MOTIFS);
+        p.extend(rel.split('/'));
+        p
     }
     pub fn get(&self, id: &str) -> Option<&Entry> {
         self.entries.iter().find(|e| e.id == id)
@@ -293,12 +325,13 @@ impl Library {
         let mut report = ImportReport::default();
         let mut todo = Vec::new();
         for p in paths {
-            collect(p, &mut todo, &mut report);
+            collect(p, None, &mut todo, &mut report);
         }
 
         let total = todo.len();
         for (k, src) in todo.into_iter().enumerate() {
             let original = src.name();
+            let folder = src.folder();
             progress(k, total, &original);
             let bytes = match src.bytes() {
                 Ok(b) => b,
@@ -309,7 +342,7 @@ impl Library {
             };
             let fh = design::file_hash(&bytes);
             if let Some(same) = self.entries.iter().find(|e| e.file_hash == fh) {
-                report.duplicates.push(Duplicate { file: original, same_as: same.name.clone() });
+                report.duplicates.push(Duplicate::of(original, same));
                 continue;
             }
             let parsed = design::parse_named(&bytes, &original);
@@ -320,7 +353,7 @@ impl Library {
                 if let Some(e) = self.entries.iter().find(|e| {
                     e.design_hash.as_deref() == dh.as_deref() && d.format.preference() >= e.preference()
                 }) {
-                    report.duplicates.push(Duplicate { file: original, same_as: e.name.clone() });
+                    report.duplicates.push(Duplicate::of(original, e));
                     continue;
                 }
                 // Le même motif autrement (autre format, autre version) : on l'ajoute, mais on le signale.
@@ -329,12 +362,12 @@ impl Library {
                     .entries
                     .iter()
                     .find(|e| e.design_hash.as_deref() == dh.as_deref() || same_motif(e, d.width_mm(), d.height_mm(), d.stitch_count, &shape))
-                    .map(|e| e.name.clone());
+                    .map(|e| (e.name.clone(), e.folder.clone()));
             }
-            match self.add(&original, &bytes, fh, parsed.as_ref().ok(), dh, k) {
+            match self.add(&original, &folder, &bytes, fh, parsed.as_ref().ok(), dh, k) {
                 Ok(entry) => {
-                    if let Some(same_as) = similar_to {
-                        report.similar.push(Duplicate { file: original.clone(), same_as });
+                    if let Some((same_as, same_folder)) = similar_to {
+                        report.similar.push(Duplicate { file: original.clone(), same_as, same_folder });
                     }
                     if let Err(e) = &parsed {
                         report.problems.push(format!("{original} : ajoutée, mais l'aperçu n'a pas pu être fait ({e})"));
@@ -353,9 +386,11 @@ impl Library {
         report
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn add(
         &mut self,
         original: &str,
+        folder: &str,
         bytes: &[u8],
         fh: String,
         d: Option<&Design>,
@@ -364,8 +399,9 @@ impl Library {
     ) -> io::Result<Entry> {
         let ext = ext_of(original);
         let name = nice_name(original);
-        let file_name = self.unique_file_name(&name, &ext, None);
-        fs::write(self.motifs_dir().join(&file_name), bytes)?;
+        fs::create_dir_all(self.motifs_dir().join(folder))?;
+        let file_name = self.unique_file_name(folder, &name, &ext, None);
+        fs::write(self.motif_path(&file_name), bytes)?;
         let mut id = fh[..12].to_string();
         while self.get(&id).is_some() {
             id.push('x');
@@ -377,6 +413,7 @@ impl Library {
             id,
             name,
             file_name,
+            folder: folder.to_string(),
             original_name: original.to_string(),
             ext: ext.to_uppercase(),
             format: d.map(|d| d.format.label().to_string()),
@@ -405,8 +442,9 @@ impl Library {
 
     /// Range un fichier du dossier « Motifs » dans la « Corbeille ».
     fn move_to_trash(&self, file_name: &str, name: &str) {
-        let src = self.motifs_dir().join(file_name);
-        let mut dst = self.root.join(TRASH).join(file_name);
+        let src = self.motif_path(file_name);
+        let base = file_name.rsplit('/').next().unwrap_or(file_name);
+        let mut dst = self.root.join(TRASH).join(base);
         let mut k = 2;
         while dst.exists() {
             dst = self.root.join(TRASH).join(format!("{} ({k}).{}", safe_file_stem(name), ext_of(file_name)));
@@ -486,18 +524,20 @@ impl Library {
         Ok(removed)
     }
 
-    fn unique_file_name(&self, name: &str, ext: &str, except: Option<&str>) -> String {
-        let used: HashSet<String> = fs::read_dir(self.motifs_dir())
+    /// Un nom de fichier libre dans le dossier `folder` de « Motifs » ; renvoie « dossier/nom.ext ».
+    fn unique_file_name(&self, folder: &str, name: &str, ext: &str, except: Option<&str>) -> String {
+        let used: HashSet<String> = fs::read_dir(self.motifs_dir().join(folder))
             .map(|rd| rd.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().to_lowercase()).collect())
             .unwrap_or_default();
+        let with_dir = |f: String| if folder.is_empty() { f } else { format!("{folder}/{f}") };
         let stem = safe_file_stem(name);
         let mut candidate = format!("{stem}.{ext}");
         let mut k = 2;
-        while used.contains(&candidate.to_lowercase()) && Some(candidate.as_str()) != except {
+        while used.contains(&candidate.to_lowercase()) && Some(with_dir(candidate.clone()).as_str()) != except {
             candidate = format!("{stem} ({k}).{ext}");
             k += 1;
         }
-        candidate
+        with_dir(candidate)
     }
 
     /// Renommer, changer les mots-clés, mettre en favori.
@@ -508,9 +548,10 @@ impl Library {
                 // On renomme aussi le fichier pour que le dossier reste bien rangé.
                 let e = &self.entries[pos];
                 let ext = ext_of(&e.file_name);
-                let new_file = self.unique_file_name(&name, &ext, Some(&e.file_name));
+                let dir = e.file_name.rsplit_once('/').map(|(d, _)| d.to_string()).unwrap_or_default();
+                let new_file = self.unique_file_name(&dir, &name, &ext, Some(&e.file_name));
                 if new_file != e.file_name
-                    && fs::rename(self.motifs_dir().join(&e.file_name), self.motifs_dir().join(&new_file)).is_ok()
+                    && fs::rename(self.motif_path(&e.file_name), self.motif_path(&new_file)).is_ok()
                 {
                     self.entries[pos].file_name = new_file;
                 }
@@ -565,10 +606,11 @@ impl Library {
         for e in &self.entries {
             let ext = ext_of(&e.file_name);
             let stem = safe_file_stem(&e.name);
-            let mut name = format!("{stem}.{ext}");
+            let dir = if e.folder.is_empty() { String::new() } else { format!("{}/", e.folder) };
+            let mut name = format!("{dir}{stem}.{ext}");
             let mut k = 2;
             while !used.insert(name.to_lowercase()) {
-                name = format!("{stem} ({k}).{ext}");
+                name = format!("{dir}{stem} ({k}).{ext}");
                 k += 1;
             }
             let bytes = fs::read(self.file_path(e)).map_err(|e| e.to_string())?;
@@ -580,22 +622,27 @@ impl Library {
     }
 }
 
-fn collect(p: &Path, todo: &mut Vec<Source>, report: &mut ImportReport) {
+/// Rassemble les fichiers à importer. Un dossier ou un .zip ajouté donne son nom au dossier
+/// de la bibliothèque où ses broderies sont rangées ; un fichier ajouté seul n'a pas de dossier.
+fn collect(p: &Path, folder: Option<&str>, todo: &mut Vec<Source>, report: &mut ImportReport) {
     if p.is_dir() {
+        let folder = folder.map(str::to_string).unwrap_or_else(|| folder_name(p));
         for e in walkdir::WalkDir::new(p).sort_by_file_name().into_iter().filter_map(|e| e.ok()) {
             if e.file_type().is_file() {
-                collect(e.path(), todo, report);
+                collect(e.path(), Some(&folder), todo, report);
             }
         }
         return;
     }
     let name = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     if ext_of(&name) == "zip" {
+        // Un .zip garde son propre nom, même s'il est dans un dossier ajouté.
+        let zip_folder = folder_name(p);
         match read_zip(p) {
             Ok(files) => {
                 for (n, b) in files {
                     if is_embroidery(&n) {
-                        todo.push(Source::Bytes(n, b));
+                        todo.push(Source::Bytes(n, b, zip_folder.clone()));
                     } else {
                         report.ignored += 1;
                     }
@@ -604,7 +651,7 @@ fn collect(p: &Path, todo: &mut Vec<Source>, report: &mut ImportReport) {
             Err(e) => report.problems.push(format!("{name} : {e}")),
         }
     } else if is_embroidery(&name) {
-        todo.push(Source::Path(p.to_path_buf()));
+        todo.push(Source::Path(p.to_path_buf(), folder.unwrap_or_default().to_string()));
     } else {
         report.ignored += 1;
     }

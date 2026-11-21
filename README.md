@@ -4,6 +4,8 @@ Logiciel Windows pour ranger, retrouver et voir ses motifs de broderie machine :
 **.pes** (Brother), .pec, **.jef** et .sew (Janome), **.vp3**/.pv3 et **.vip** (Pfaff), **.hus** (Husqvarna), .exp (Melco), .dst (Tajima).
 
 - **Ajouter** des fichiers, **plusieurs dossiers d'un coup** ou des **.zip** (boutons, ou glisser-déposer depuis l'Explorateur).
+  Chaque dossier ou .zip ajouté devient un **dossier de la bibliothèque, à son nom** (rubrique « Mes dossiers »,
+  et sur le disque `Motifs/<nom>/`).
 - **Doublons** : un fichier strictement identique (même contenu, mêmes points) n'est pas ajouté deux fois.
   Le **même motif** dans un autre format ou une autre version (même taille, même dessin) est repéré, et
   **« Chercher les doublons »** les montre côte à côte : on choisit ce qu'on garde (le PES est conseillé, la
@@ -21,7 +23,7 @@ Les broderies sont rangées dans **Documents › Broderies de Mamie** :
 
 ```
 Broderies de Mamie/
-├── Motifs/            ← les fichiers, bien nommés (on peut aussi les ouvrir avec un autre logiciel)
+├── Motifs/            ← les fichiers, bien nommés, rangés par dossier importé (Motifs/Noël/…)
 ├── Corbeille/         ← les broderies supprimées (rien n'est perdu)
 ├── Aperçus/           ← les images (refaites automatiquement)
 └── bibliotheque.json  ← noms, mots-clés, favoris

@@ -31,6 +31,7 @@
     saveZip: async p => "C:/" + p,
     thumbUrl: p => encodeURI(p), // servi par un petit serveur http local (voir dev/README.md)
     reveal: async () => {},
+    entryPath: async id => "/lib/Motifs/" + entries.find(e => e.id === id).fileName,
     onProgress: cb => { progress = cb; },
     onDragDrop: () => {},
   };

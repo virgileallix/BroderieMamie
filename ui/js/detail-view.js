@@ -78,7 +78,7 @@ export function initDetail() {
   });
 
   $("btnFav").onclick = () => save({ favorite: !entry.favorite }, entry.favorite ? "Retirée des favoris" : "Ajoutée aux favoris ★");
-  $("btnReveal").onclick = () => api.reveal(joinPath(state.root, joinPath("Motifs", entry.fileName))).catch(showError);
+  $("btnReveal").onclick = () => api.entryPath(entry.id).then(api.reveal).catch(showError);
 
   $("btnExport").onclick = async () => {
     try {
@@ -147,7 +147,8 @@ export async function openDetail(id) {
 function fillInfo() {
   const e = entry;
   $("dTitle").textContent = e.name;
-  $("dFile").textContent = `Fichier « ${e.fileName} »` + (e.originalName && e.originalName !== e.fileName ? ` — importé depuis « ${e.originalName} »` : "");
+  const base = e.fileName.split("/").pop();
+  $("dFile").textContent = `Fichier « ${base} »` + (e.originalName && e.originalName !== base ? ` — importé depuis « ${e.originalName} »` : "");
   $("dNotice").classList.toggle("hidden", fmtOf(e) === "PES");
   const hoop = e.widthMM ? bestHoop(e.widthMM, e.heightMM) : null;
   const facts = e.format ? [
@@ -157,6 +158,7 @@ function fillInfo() {
     ["Cadre conseillé", hoop ? `${cm(hoop[0])} × ${cm(hoop[1])} cm` : "très grand"],
     ["Format", e.ext === e.format ? e.format : `${e.format} (.${e.ext.toLowerCase()})`],
   ] : [["Aperçu", "Ce fichier n'a pas pu être lu", true], ["Format", e.ext]];
+  if (e.folder) facts.push(["Dossier", e.folder, true]);
   facts.push(["Ajoutée le", new Date(e.addedAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }), true]);
   $("facts").replaceChildren(...facts.map(([k, v, wide]) =>
     el("div", { class: "fact" + (wide ? " wide" : "") }, el("span", {}, k), el("strong", {}, v))));

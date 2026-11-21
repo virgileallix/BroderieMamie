@@ -33,6 +33,8 @@ export function inView(e, view = state.view) {
   if (view === "recent") return isRecent(e);
   if (view.startsWith("fmt:")) return fmtOf(e) === view.slice(4);
   if (view.startsWith("tag:")) return e.tags.some(t => norm(t) === norm(view.slice(4)));
+  if (view === "dir:") return !e.folder;
+  if (view.startsWith("dir:")) return e.folder === view.slice(4);
   return true;
 }
 
@@ -59,13 +61,25 @@ export function allTags() {
   return [...m.values()].sort((a, b) => a.name.localeCompare(b.name, "fr", { sensitivity: "base" }));
 }
 
+/** Les dossiers (un par dossier ou .zip importé), avec leur nombre de broderies. */
+export function allFolders() {
+  const m = new Map();
+  let loose = 0;
+  for (const e of state.entries) {
+    if (e.folder) m.set(e.folder, (m.get(e.folder) || 0) + 1);
+    else loose++;
+  }
+  const list = [...m].map(([name, n]) => ({ name, n })).sort((a, b) => a.name.localeCompare(b.name, "fr", { numeric: true, sensitivity: "base" }));
+  return { list, loose };
+}
+
 /** Les broderies à afficher, filtrées par la vue et la recherche, puis triées. */
 export function visible() {
   const words = norm(state.query).split(/\s+/).filter(Boolean);
   const list = state.entries.filter(e => {
     if (!inView(e)) return false;
     if (!words.length) return true;
-    const hay = norm([e.name, e.originalName, e.label, e.tags.join(" "), e.ext, e.format,
+    const hay = norm([e.name, e.originalName, e.label, e.folder, e.tags.join(" "), e.ext, e.format,
       e.colors.map(c => c.name).join(" ")].join(" "));
     return words.every(w => hay.includes(w));
   });
@@ -87,5 +101,7 @@ export function viewTitle(view = state.view) {
   if (view === "fmt:PES") return "Pour ma Brother (PES)";
   if (view === "fmt:AUTRES") return "Autres formats";
   if (view.startsWith("tag:")) return "« " + view.slice(4) + " »";
+  if (view === "dir:") return "Ajoutées une par une";
+  if (view.startsWith("dir:")) return view.slice(4);
   return "Toutes mes broderies";
 }

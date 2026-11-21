@@ -69,7 +69,8 @@ function showReport(r) {
   setStat("sDup", "sDupLbl", d, "déjà là, pas ajoutée", "déjà là, pas ajoutées");
   setStat("sSkip", "sSkipLbl", r.ignored, "autre fichier ignoré", "autres fichiers ignorés");
   $("dupDetails").classList.toggle("hidden", !d);
-  $("dupList").replaceChildren(...r.duplicates.map(x => el("li", {}, `${x.file} → déjà là sous le nom « ${x.sameAs} »`)));
+  $("dupList").replaceChildren(...r.duplicates.map(x => el("li", {},
+    `${x.file} → déjà là sous le nom « ${x.sameAs} »` + (x.sameFolder ? `, dans le dossier « ${x.sameFolder} »` : ""))));
   $("dupDetails").querySelector("summary").textContent = "Voir les fichiers déjà là";
   $("similarBox").classList.toggle("hidden", !sim);
   $("similarText").textContent = sim

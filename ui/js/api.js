@@ -16,6 +16,7 @@ function tauriApi() {
     exportTo: (id, dir) => invoke("export_entry", { id, dir }),
     backup: dest => invoke("backup", { dest }),
     findDuplicates: () => invoke("find_duplicates"),
+    entryPath: id => invoke("entry_path", { id }),
     removeDuplicates: choices => invoke("remove_duplicates", { choices }),
     pickFiles: async () => asList(await T.dialog.open({
       multiple: true, title: "Choisir des broderies",

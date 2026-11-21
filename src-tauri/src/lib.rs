@@ -115,6 +115,14 @@ async fn get_design(lib: State<'_, Lib>, id: String) -> Result<DesignView, Strin
     })
 }
 
+/// Chemin complet du fichier d'une broderie (pour l'ouvrir dans l'Explorateur).
+#[tauri::command]
+fn entry_path(lib: State<Lib>, id: String) -> Result<String, String> {
+    let l = lock(&lib);
+    let e = l.get(&id).ok_or("broderie introuvable")?;
+    Ok(l.file_path(e).to_string_lossy().into_owned())
+}
+
 #[tauri::command]
 fn find_duplicates(lib: State<Lib>) -> Vec<DuplicateGroup> {
     lock(&lib).find_duplicates()
@@ -172,6 +180,7 @@ pub fn run() {
             get_design,
             export_entry,
             find_duplicates,
+            entry_path,
             remove_duplicates,
             backup
         ])

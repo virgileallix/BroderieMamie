@@ -79,7 +79,9 @@ fn bibliotheque_sans_doublons() {
     let fleur_hash = broderie_core::file_hash(&fs::read(fx("fleur.pes")).unwrap());
     let id = lib.entries().iter().find(|e| e.file_hash == fleur_hash).unwrap().id.clone();
     let e = lib.update(&id, EntryUpdate { name: Some("Fleur de Noël".into()), tags: Some(vec!["Noël".into(), "noël".into(), " fleurs ".into()]), favorite: Some(true) }).unwrap();
-    assert_eq!(e.file_name, "Fleur de Noël.pes");
+    // Rangée dans le dossier qui porte le nom du dossier importé.
+    assert!(!e.folder.is_empty());
+    assert_eq!(e.file_name, format!("{}/Fleur de Noël.pes", e.folder));
     assert_eq!(e.tags, ["Noël", "fleurs"]);
     let lib = Library::open(dir.path()).unwrap();
     assert_eq!(lib.get(&id).unwrap().name, "Fleur de Noël");
