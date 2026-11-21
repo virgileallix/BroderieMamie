@@ -23,6 +23,7 @@
     design: async id => data.designs[id],
     exportTo: async () => "E:/broderie.pes",
     backup: async () => entries.length,
+    dedupe: async () => { await wait(600); return window.__MOCK_DEDUPE__ || { removed: [], kept: entries.length }; },
     pickFiles: async () => ["C:/Users/Mamie/Téléchargements/motifs.zip"],
     pickFolder: async () => ["E:/"],
     saveZip: async p => "C:/" + p,

@@ -31,6 +31,18 @@ pub enum Format {
     Pec,
     #[serde(rename = "VP3")]
     Vp3,
+    #[serde(rename = "JEF")]
+    Jef,
+    #[serde(rename = "SEW")]
+    Sew,
+    #[serde(rename = "EXP")]
+    Exp,
+    #[serde(rename = "DST")]
+    Dst,
+    #[serde(rename = "HUS")]
+    Hus,
+    #[serde(rename = "VIP")]
+    Vip,
 }
 
 impl Format {
@@ -39,6 +51,22 @@ impl Format {
             Format::Pes => "PES",
             Format::Pec => "PEC",
             Format::Vp3 => "VP3",
+            Format::Jef => "JEF",
+            Format::Sew => "SEW",
+            Format::Exp => "EXP",
+            Format::Dst => "DST",
+            Format::Hus => "HUS",
+            Format::Vip => "VIP",
+        }
+    }
+
+    /// Ordre de préférence quand un même motif existe en plusieurs formats :
+    /// la machine de Mamie est une Brother, elle lit les PES.
+    pub fn preference(self) -> u8 {
+        match self {
+            Format::Pes => 0,
+            Format::Pec => 1,
+            _ => 2,
         }
     }
 }
@@ -102,6 +130,73 @@ impl Design {
     }
 }
 
+/// Côté de la grille utilisée pour comparer la forme de deux motifs.
+pub const SHAPE_SIZE: usize = 40;
+
+impl Design {
+    /// Empreinte de la forme : grille 40 × 40 (étirée sur le motif) des cases traversées par le fil.
+    /// Deux fichiers du même motif dans des formats différents ont presque la même empreinte.
+    pub fn shape(&self) -> Vec<u8> {
+        let n = SHAPE_SIZE;
+        let mut grid = vec![false; n * n];
+        let w = (self.max_x - self.min_x).max(1.0);
+        let h = (self.max_y - self.min_y).max(1.0);
+        let (cw, ch) = (w / n as f32, h / n as f32);
+        let mut mark = |x: f32, y: f32| {
+            let gx = (((x - self.min_x) / w) * n as f32).floor().clamp(0.0, (n - 1) as f32) as usize;
+            let gy = (((y - self.min_y) / h) * n as f32).floor().clamp(0.0, (n - 1) as f32) as usize;
+            grid[gy * n + gx] = true;
+        };
+        for b in &self.blocks {
+            let mut prev: Option<(f32, f32)> = None;
+            for s in &b.stitches {
+                if !s.jump {
+                    if let Some((px, py)) = prev {
+                        let steps = (((s.x - px).abs() / cw).max((s.y - py).abs() / ch) * 2.0).ceil() as usize;
+                        for k in 1..steps.min(4 * n) {
+                            let t = k as f32 / steps as f32;
+                            mark(px + (s.x - px) * t, py + (s.y - py) * t);
+                        }
+                    }
+                    mark(s.x, s.y);
+                }
+                prev = Some((s.x, s.y));
+            }
+        }
+        let mut bits = vec![0u8; n * n / 8];
+        for (i, &on) in grid.iter().enumerate() {
+            if on {
+                bits[i / 8] |= 1 << (i % 8);
+            }
+        }
+        bits
+    }
+}
+
+/// Ressemblance entre deux empreintes de forme : 1,0 = identiques, 0,0 = rien en commun.
+pub fn shape_similarity(a: &[u8], b: &[u8]) -> f32 {
+    if a.len() != b.len() || a.is_empty() {
+        return 0.0;
+    }
+    let (mut inter, mut union) = (0u32, 0u32);
+    for (x, y) in a.iter().zip(b) {
+        inter += (x & y).count_ones();
+        union += (x | y).count_ones();
+    }
+    if union == 0 { 0.0 } else { inter as f32 / union as f32 }
+}
+
+pub fn to_hex(b: &[u8]) -> String {
+    hex(b)
+}
+
+pub fn from_hex(s: &str) -> Option<Vec<u8>> {
+    if s.len() % 2 != 0 {
+        return None;
+    }
+    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(s.get(i..i + 2)?, 16).ok()).collect()
+}
+
 /// Empreinte exacte du contenu d'un fichier.
 pub fn file_hash(bytes: &[u8]) -> String {
     hex(&Sha256::digest(bytes))
@@ -111,24 +206,59 @@ fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
 
-fn rgb_hex(r: u8, g: u8, b: u8) -> String {
+pub(crate) fn rgb_hex(r: u8, g: u8, b: u8) -> String {
     format!("#{r:02x}{g:02x}{b:02x}")
 }
 
+/// Reconnaît le format d'après le contenu du fichier (formats qui ont une signature).
 pub fn detect_format(bytes: &[u8]) -> Option<Format> {
+    let magic = |m: u32| bytes.len() >= 4 && u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) == m;
     if bytes.starts_with(b"#PES") {
         Some(Format::Pes)
     } else if bytes.starts_with(b"#PEC") {
         Some(Format::Pec)
     } else if bytes.starts_with(b"%vsm%") {
         Some(Format::Vp3)
+    } else if magic(crate::formats::HUS_MAGIC) {
+        Some(Format::Hus)
+    } else if magic(crate::formats::VIP_MAGIC) {
+        Some(Format::Vip)
+    } else if bytes.starts_with(b"LA:") && bytes.len() > 512 {
+        Some(Format::Dst)
     } else {
         None
     }
 }
 
+/// Format d'après l'extension, pour les formats sans signature (JEF, SEW, EXP, DST).
+pub fn format_from_name(name: &str) -> Option<Format> {
+    let ext = std::path::Path::new(name).extension()?.to_string_lossy().to_lowercase();
+    Some(match ext.as_str() {
+        "pes" => Format::Pes,
+        "pec" => Format::Pec,
+        "vp3" | "pv3" => Format::Vp3,
+        "jef" => Format::Jef,
+        "sew" => Format::Sew,
+        "exp" => Format::Exp,
+        "dst" => Format::Dst,
+        "hus" => Format::Hus,
+        "vip" => Format::Vip,
+        _ => return None,
+    })
+}
+
+/// Lit un fichier de broderie en reconnaissant le format par son contenu uniquement.
 pub fn parse(bytes: &[u8]) -> Result<Design, ParseError> {
-    let format = detect_format(bytes).ok_or(ParseError::UnknownFormat)?;
+    parse_as(bytes, detect_format(bytes).ok_or(ParseError::UnknownFormat)?)
+}
+
+/// Lit un fichier de broderie : par son contenu si possible, sinon d'après son nom.
+pub fn parse_named(bytes: &[u8], file_name: &str) -> Result<Design, ParseError> {
+    let format = detect_format(bytes).or_else(|| format_from_name(file_name)).ok_or(ParseError::UnknownFormat)?;
+    parse_as(bytes, format)
+}
+
+fn parse_as(bytes: &[u8], format: Format) -> Result<Design, ParseError> {
     let mut raw = RawDesign::default();
     match format {
         Format::Pes => parse_pes(bytes, &mut raw)?,
@@ -138,14 +268,20 @@ pub fn parse(bytes: &[u8]) -> Result<Design, ParseError> {
             read_pec(&mut r, &mut raw, Vec::new())?;
         }
         Format::Vp3 => parse_vp3(bytes, &mut raw)?,
+        Format::Jef => crate::formats::parse_jef(bytes, &mut raw)?,
+        Format::Sew => crate::formats::parse_sew(bytes, &mut raw)?,
+        Format::Exp => crate::formats::parse_exp(bytes, &mut raw)?,
+        Format::Dst => crate::formats::parse_dst(bytes, &mut raw)?,
+        Format::Hus => crate::formats::parse_hus(bytes, &mut raw, false)?,
+        Format::Vip => crate::formats::parse_hus(bytes, &mut raw, true)?,
     }
     finish(format, raw)
 }
 
 #[derive(Default)]
-struct RawDesign {
-    label: String,
-    blocks: Vec<Block>,
+pub(crate) struct RawDesign {
+    pub(crate) label: String,
+    pub(crate) blocks: Vec<Block>,
 }
 
 fn finish(format: Format, raw: RawDesign) -> Result<Design, ParseError> {

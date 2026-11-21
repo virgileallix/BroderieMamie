@@ -2,7 +2,7 @@
 import { api } from "./api.js";
 import { confirmBox, showError, toast } from "./dialogs.js";
 import { Viewer, bestHoop } from "./renderer.js";
-import { state, upsert, removeEntry, allTags } from "./state.js";
+import { state, upsert, removeEntry, allTags, fmtOf } from "./state.js";
 import { $, el, icon, joinPath, norm, plural, size, cm, prefs } from "./util.js";
 
 let viewer;
@@ -148,6 +148,7 @@ function fillInfo() {
   const e = entry;
   $("dTitle").textContent = e.name;
   $("dFile").textContent = `Fichier « ${e.fileName} »` + (e.originalName && e.originalName !== e.fileName ? ` — importé depuis « ${e.originalName} »` : "");
+  $("dNotice").classList.toggle("hidden", fmtOf(e) === "PES");
   const hoop = e.widthMM ? bestHoop(e.widthMM, e.heightMM) : null;
   const facts = e.format ? [
     ["Taille", size(e.widthMM, e.heightMM), true],

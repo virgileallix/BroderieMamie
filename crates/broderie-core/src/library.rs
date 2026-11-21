@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! Broderies de Mamie/
-//! ├── Motifs/              ← les fichiers .pes / .vp3, lisibles par n'importe quel logiciel
+//! ├── Motifs/              ← les fichiers (.pes, .jef, .vp3…), lisibles par n'importe quel logiciel
 //! ├── Corbeille/           ← les broderies supprimées (rien n'est jamais vraiment perdu)
 //! ├── Aperçus/             ← les petites images des motifs (refaites automatiquement)
 //! └── bibliotheque.json    ← noms, mots-clés, favoris, empreintes
@@ -11,13 +11,13 @@
 use crate::design::{self, Design, Thread};
 use crate::render;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub const EXTENSIONS: [&str; 4] = ["pes", "vp3", "pv3", "pec"];
+pub const EXTENSIONS: [&str; 10] = ["pes", "pec", "vp3", "pv3", "jef", "sew", "exp", "dst", "hus", "vip"];
 const INDEX: &str = "bibliotheque.json";
 const MOTIFS: &str = "Motifs";
 const TRASH: &str = "Corbeille";
@@ -52,6 +52,43 @@ pub struct Entry {
     pub label: String,
     #[serde(default)]
     pub read_error: Option<String>,
+    /// Empreinte de la forme du motif (voir `Design::shape`), pour repérer le même motif
+    /// enregistré dans un autre format.
+    #[serde(default)]
+    pub shape: Option<String>,
+    #[serde(skip)]
+    shape_bits: Option<Vec<u8>>,
+}
+
+impl Entry {
+    fn set_shape(&mut self, d: &Design) {
+        let bits = d.shape();
+        self.shape = Some(design::to_hex(&bits));
+        self.shape_bits = Some(bits);
+    }
+
+    /// Ordre de préférence du format (0 = PES, le format de la Brother de Mamie).
+    fn preference(&self) -> u8 {
+        match self.format.as_deref() {
+            Some("PES") => 0,
+            Some("PEC") => 1,
+            _ => 2,
+        }
+    }
+}
+
+/// Le même motif ? Même taille (à 1 mm ou 2 % près), à peu près le même nombre de points
+/// et presque la même forme.
+fn same_motif(e: &Entry, w: f32, h: f32, stitches: usize, shape: &[u8]) -> bool {
+    let close = |a: f32, b: f32| (a - b).abs() <= 1.0f32.max(a.max(b) * 0.02);
+    if !(close(e.width_mm, w) && close(e.height_mm, h)) {
+        return false;
+    }
+    let (a, b) = (e.stitches.max(1) as f32, stitches.max(1) as f32);
+    if a.max(b) / a.min(b) > 1.15 {
+        return false;
+    }
+    e.shape_bits.as_deref().is_some_and(|s| design::shape_similarity(s, shape) >= 0.85)
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -72,8 +109,18 @@ pub struct Duplicate {
 pub struct ImportReport {
     pub added: Vec<Entry>,
     pub duplicates: Vec<Duplicate>,
+    /// Motifs déjà présents dans un autre format, remplacés par la version PES qu'on vient d'ajouter.
+    pub replaced: Vec<Duplicate>,
     pub ignored: usize,
     pub problems: Vec<String>,
+}
+
+#[derive(Debug, Default, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DedupeReport {
+    /// Les broderies retirées (rangées dans la Corbeille) et celle qui est gardée à leur place.
+    pub removed: Vec<Duplicate>,
+    pub kept: usize,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -155,7 +202,32 @@ impl Library {
         let before = lib.entries.len();
         let motifs = lib.root.join(MOTIFS);
         lib.entries.retain(|e| motifs.join(&e.file_name).exists());
-        if lib.entries.len() != before {
+        let mut changed = lib.entries.len() != before;
+        // Empreintes de forme (calculées une fois pour les anciennes broderies) et aperçus manquants.
+        for i in 0..lib.entries.len() {
+            let e = &lib.entries[i];
+            let bits = e.shape.as_deref().and_then(design::from_hex);
+            let thumb_missing = !lib.thumb_path(&e.id).exists();
+            if e.format.is_some() && (bits.is_none() || thumb_missing) {
+                if let Ok(d) = fs::read(motifs.join(&e.file_name))
+                    .map_err(|_| ())
+                    .and_then(|b| design::parse_named(&b, &e.file_name).map_err(|_| ()))
+                {
+                    if thumb_missing {
+                        if let Some(png) = render::render_png(&d, THUMB_SIZE) {
+                            let _ = fs::write(lib.thumb_path(&e.id), png);
+                        }
+                    }
+                    if bits.is_none() {
+                        lib.entries[i].set_shape(&d);
+                        changed = true;
+                    }
+                    continue;
+                }
+            }
+            lib.entries[i].shape_bits = bits;
+        }
+        if changed {
             lib.save()?;
         }
         Ok(lib)
@@ -191,7 +263,7 @@ impl Library {
     pub fn design(&self, id: &str) -> Result<Design, String> {
         let e = self.get(id).ok_or("broderie introuvable")?;
         let bytes = fs::read(self.file_path(e)).map_err(|e| e.to_string())?;
-        design::parse(&bytes).map_err(|e| e.to_string())
+        design::parse_named(&bytes, &e.file_name).map_err(|e| e.to_string())
     }
 
     /// Ajoute des fichiers, des dossiers entiers ou des .zip.
@@ -203,13 +275,6 @@ impl Library {
             collect(p, &mut todo, &mut report);
         }
 
-        let mut by_file: HashMap<String, String> =
-            self.entries.iter().map(|e| (e.file_hash.clone(), e.name.clone())).collect();
-        let mut by_design: HashMap<String, String> = self
-            .entries
-            .iter()
-            .filter_map(|e| e.design_hash.clone().map(|h| (h, e.name.clone())))
-            .collect();
         let total = todo.len();
         for (k, src) in todo.into_iter().enumerate() {
             let original = src.name();
@@ -222,24 +287,37 @@ impl Library {
                 }
             };
             let fh = design::file_hash(&bytes);
-            if let Some(same) = by_file.get(&fh) {
-                report.duplicates.push(Duplicate { file: original, same_as: same.clone() });
+            if let Some(same) = self.entries.iter().find(|e| e.file_hash == fh) {
+                report.duplicates.push(Duplicate { file: original, same_as: same.name.clone() });
                 continue;
             }
-            let parsed = design::parse(&bytes);
+            let parsed = design::parse_named(&bytes, &original);
             let dh = parsed.as_ref().ok().map(|d| d.design_hash());
-            if let Some(same) = dh.as_ref().and_then(|h| by_design.get(h)) {
-                report.duplicates.push(Duplicate { file: original, same_as: same.clone() });
-                continue;
+            if let Ok(d) = &parsed {
+                // Le même motif est-il déjà là (même dessin, éventuellement dans un autre format) ?
+                let shape = d.shape();
+                let found = self.entries.iter().position(|e| {
+                    e.design_hash.as_deref() == dh.as_deref()
+                        || same_motif(e, d.width_mm(), d.height_mm(), d.stitch_count, &shape)
+                });
+                if let Some(i) = found {
+                    let same_as = self.entries[i].name.clone();
+                    if d.format.preference() < self.entries[i].preference() {
+                        // On garde la version PES : elle remplace l'autre format.
+                        match self.replace_file(i, &original, &bytes, fh, d, dh) {
+                            Ok(()) => report.replaced.push(Duplicate { file: original, same_as }),
+                            Err(e) => report.problems.push(format!("{original} : {e}")),
+                        }
+                    } else {
+                        report.duplicates.push(Duplicate { file: original, same_as });
+                    }
+                    continue;
+                }
             }
-            match self.add(&original, &bytes, fh.clone(), parsed.as_ref().ok(), dh.clone(), k) {
+            match self.add(&original, &bytes, fh, parsed.as_ref().ok(), dh, k) {
                 Ok(entry) => {
                     if let Err(e) = &parsed {
                         report.problems.push(format!("{original} : ajoutée, mais l'aperçu n'a pas pu être fait ({e})"));
-                    }
-                    by_file.insert(fh, entry.name.clone());
-                    if let Some(h) = dh {
-                        by_design.insert(h, entry.name.clone());
                     }
                     report.added.push(entry);
                 }
@@ -247,7 +325,7 @@ impl Library {
             }
         }
         progress(total, total, "");
-        if !report.added.is_empty() {
+        if !report.added.is_empty() || !report.replaced.is_empty() {
             if let Err(e) = self.save() {
                 report.problems.push(format!("Impossible d'enregistrer la liste : {e}"));
             }
@@ -294,9 +372,121 @@ impl Library {
             added_at: now_ms() + order as u64,
             label: d.map(|d| d.label.clone()).unwrap_or_default(),
             read_error: None,
+            shape: None,
+            shape_bits: None,
         };
+        let mut entry = entry;
+        if let Some(d) = d {
+            entry.set_shape(d);
+        }
         self.entries.push(entry.clone());
         Ok(entry)
+    }
+
+    /// Remplace le fichier d'une broderie par une autre version du même motif (le PES),
+    /// en gardant son nom, ses mots-clés et son étoile. L'ancien fichier va à la corbeille.
+    fn replace_file(
+        &mut self,
+        i: usize,
+        original: &str,
+        bytes: &[u8],
+        fh: String,
+        d: &Design,
+        dh: Option<String>,
+    ) -> io::Result<()> {
+        let ext = ext_of(original);
+        let old = self.entries[i].clone();
+        self.move_to_trash(&old.file_name, &old.name);
+        let file_name = self.unique_file_name(&old.name, &ext, None);
+        fs::write(self.motifs_dir().join(&file_name), bytes)?;
+        let _ = fs::remove_file(self.thumb_path(&old.id));
+        let mut id = fh[..12].to_string();
+        while self.get(&id).is_some() {
+            id.push('x');
+        }
+        if let Some(png) = render::render_png(d, THUMB_SIZE) {
+            let _ = fs::write(self.thumb_path(&id), png);
+        }
+        let e = &mut self.entries[i];
+        e.id = id;
+        e.file_name = file_name;
+        e.original_name = original.to_string();
+        e.ext = ext.to_uppercase();
+        e.format = Some(d.format.label().to_string());
+        e.size = bytes.len() as u64;
+        e.file_hash = fh;
+        e.design_hash = dh;
+        e.width_mm = d.width_mm();
+        e.height_mm = d.height_mm();
+        e.stitches = d.stitch_count;
+        e.colors = d.threads();
+        e.label = d.label.clone();
+        e.read_error = None;
+        e.set_shape(d);
+        Ok(())
+    }
+
+    /// Range un fichier du dossier « Motifs » dans la « Corbeille ».
+    fn move_to_trash(&self, file_name: &str, name: &str) {
+        let src = self.motifs_dir().join(file_name);
+        let mut dst = self.root.join(TRASH).join(file_name);
+        let mut k = 2;
+        while dst.exists() {
+            dst = self.root.join(TRASH).join(format!("{} ({k}).{}", safe_file_stem(name), ext_of(file_name)));
+            k += 1;
+        }
+        if fs::rename(&src, &dst).is_err() {
+            let _ = fs::copy(&src, &dst).and_then(|_| fs::remove_file(&src));
+        }
+    }
+
+    /// Cherche les doublons déjà présents dans la collection : le même motif en plusieurs
+    /// exemplaires ou plusieurs formats. On garde le PES (sinon le plus ancien), on lui
+    /// ajoute les mots-clés et l'étoile des autres, et les autres vont à la corbeille.
+    pub fn dedupe(&mut self) -> Result<DedupeReport, String> {
+        let mut order: Vec<usize> = (0..self.entries.len()).collect();
+        order.sort_by_key(|&i| (self.entries[i].preference(), self.entries[i].added_at));
+        let mut kept: Vec<usize> = Vec::new();
+        let mut removed: Vec<(usize, usize)> = Vec::new();
+        for i in order {
+            let e = &self.entries[i];
+            let twin = kept.iter().copied().find(|&k| {
+                let o = &self.entries[k];
+                o.file_hash == e.file_hash
+                    || (e.design_hash.is_some() && o.design_hash == e.design_hash)
+                    || e.shape_bits.as_deref().is_some_and(|s| same_motif(o, e.width_mm, e.height_mm, e.stitches, s))
+            });
+            match twin {
+                Some(k) => removed.push((i, k)),
+                None => kept.push(i),
+            }
+        }
+        let mut report = DedupeReport { kept: kept.len(), ..Default::default() };
+        for &(i, k) in &removed {
+            let (tags, fav) = (self.entries[i].tags.clone(), self.entries[i].favorite);
+            let keep = &mut self.entries[k];
+            for t in tags {
+                if !keep.tags.iter().any(|x| x.to_lowercase() == t.to_lowercase()) {
+                    keep.tags.push(t);
+                }
+            }
+            keep.favorite |= fav;
+            let gone = &self.entries[i];
+            report.removed.push(Duplicate { file: gone.file_name.clone(), same_as: self.entries[k].name.clone() });
+            self.move_to_trash(&gone.file_name, &gone.name);
+            let _ = fs::remove_file(self.thumb_path(&gone.id));
+        }
+        if !removed.is_empty() {
+            let gone: HashSet<usize> = removed.iter().map(|&(i, _)| i).collect();
+            let mut i = 0;
+            self.entries.retain(|_| {
+                let keep = !gone.contains(&i);
+                i += 1;
+                keep
+            });
+            self.save().map_err(|e| e.to_string())?;
+        }
+        Ok(report)
     }
 
     fn unique_file_name(&self, name: &str, ext: &str, except: Option<&str>) -> String {
@@ -349,16 +539,7 @@ impl Library {
     pub fn delete(&mut self, id: &str) -> Result<(), String> {
         let pos = self.entries.iter().position(|e| e.id == id).ok_or("broderie introuvable")?;
         let e = self.entries.remove(pos);
-        let src = self.motifs_dir().join(&e.file_name);
-        let mut dst = self.root.join(TRASH).join(&e.file_name);
-        let mut k = 2;
-        while dst.exists() {
-            dst = self.root.join(TRASH).join(format!("{} ({k}).{}", safe_file_stem(&e.name), ext_of(&e.file_name)));
-            k += 1;
-        }
-        if fs::rename(&src, &dst).is_err() {
-            let _ = fs::copy(&src, &dst).and_then(|_| fs::remove_file(&src));
-        }
+        self.move_to_trash(&e.file_name, &e.name);
         let _ = fs::remove_file(self.thumb_path(&e.id));
         self.save().map_err(|e| e.to_string())
     }

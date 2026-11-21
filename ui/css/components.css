@@ -104,6 +104,7 @@ input[type=text], .rename input, .tag-add input {
   position: absolute; top: 12px; left: 12px; padding: 3px 8px; border-radius: 7px;
   background: var(--text-ink); color: var(--bg-surface); font-size: 12px; font-weight: 900; letter-spacing: .06em;
 }
+.badge-other { background: #8a5f12; }
 .card-fav {
   position: absolute; top: 6px; right: 6px; width: 44px; height: 44px; border-radius: 50%;
   display: grid; place-items: center; color: #b9aa9c; opacity: 0; transition: opacity .15s, color .15s, background .15s;
@@ -141,7 +142,8 @@ dialog::backdrop { background: rgba(38, 27, 20, .5); backdrop-filter: blur(3px);
 .progress { height: 14px; border-radius: 99px; background: var(--bg-sunken); overflow: hidden; }
 .progress-bar { height: 100%; width: 0; border-radius: 99px; background: repeating-linear-gradient(-45deg, var(--brand-sage) 0 10px, #4f7d68 10px 20px); transition: width .2s; }
 .i-file { font-size: var(--fs-sm); margin: 10px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.stats { display: flex; gap: 10px; }
+.stats > .stat { flex: 1; }
 .stat { border-radius: var(--r-md); padding: 16px 8px; display: flex; flex-direction: column; gap: 2px; font-weight: 800; font-size: var(--fs-sm); }
 .stat strong { font-family: var(--font-title); font-size: 38px; line-height: 1.1; }
 .stat-ok { background: var(--brand-sage-soft); color: var(--brand-sage); }
@@ -152,6 +154,12 @@ dialog::backdrop { background: rgba(38, 27, 20, .5); backdrop-filter: blur(3px);
 .report ul { margin: 6px 0; padding-left: 20px; max-height: 180px; overflow: auto; }
 
 /* ---------- Divers ---------- */
+.notice {
+  display: flex; gap: 10px; align-items: flex-start; margin: -8px 0 22px; padding: 12px 14px;
+  border-radius: var(--r-md); background: #fff2dc; color: #7a520c; font-weight: 700; font-size: var(--fs-sm);
+}
+.notice .icon { flex: none; margin-top: 1px; }
+.nav-tag-muted { background: var(--border-strong); color: var(--text-ink); }
 .toast {
   position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 100;
   display: flex; align-items: center; gap: 10px; max-width: 80vw;

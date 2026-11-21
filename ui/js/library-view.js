@@ -1,7 +1,7 @@
 // Écran principal : menu de gauche et grille des broderies.
 import { api } from "./api.js";
 import { showError, toast } from "./dialogs.js";
-import { state, counts, allTags, visible, viewTitle, upsert, emit } from "./state.js";
+import { state, counts, allTags, visible, viewTitle, upsert, emit, fmtOf } from "./state.js";
 import { $, el, icon, joinPath, plural, size, prefs } from "./util.js";
 
 const PAGE = 150;
@@ -74,7 +74,7 @@ function renderGrid() {
   $("viewTitle").textContent = viewTitle();
   $("viewSub").textContent = !total ? "" :
     state.query ? `${plural(list.length, "broderie trouvée", "broderies trouvées")} pour « ${state.query} »`
-      : state.view === "all" ? `${plural(total, "motif")}, sans aucun doublon` : plural(list.length, "broderie");
+      : state.view === "all" ? plural(total, "motif") : plural(list.length, "broderie");
 
   const grid = $("grid");
   grid.replaceChildren(...list.slice(0, shown).map(card));
@@ -86,12 +86,14 @@ function renderGrid() {
   $("emptyActions").classList.toggle("hidden", noResults);
   if (total === 0) {
     $("emptyTitle").textContent = "Votre collection est vide";
-    $("emptyText").textContent = "Ajoutez vos fichiers de broderie (.pes, .vp3, .pv3). Vous pouvez aussi les faire glisser ici, ou choisir un dossier entier : les doublons seront retirés tout seuls.";
+    $("emptyText").textContent = "Ajoutez vos fichiers de broderie (.pes, .jef, .vp3, .hus, .vip, .sew, .exp…). Vous pouvez aussi les faire glisser ici, ou choisir un dossier entier : les doublons seront retirés tout seuls, en gardant le PES.";
   } else if (noResults) {
     $("emptyTitle").textContent = state.query ? "Aucune broderie trouvée" : "Rien ici pour l'instant";
     $("emptyText").textContent = state.query
       ? `Aucune broderie ne correspond à « ${state.query} ». Essayez un autre mot, ou vérifiez l'orthographe.`
-      : state.view === "fav" ? "Cliquez sur l'étoile d'une broderie pour la retrouver ici." : "Aucune broderie dans cette rubrique.";
+      : state.view === "fav" ? "Cliquez sur l'étoile d'une broderie pour la retrouver ici."
+      : state.view === "fmt:AUTRES" ? "Toutes les broderies sont au format PES : la machine Brother peut toutes les lire."
+      : "Aucune broderie dans cette rubrique.";
   }
 }
 
@@ -127,6 +129,6 @@ function card(e) {
 
   return el("article", { class: "card" },
     el("button", { class: "card-open", "aria-label": `Ouvrir ${e.name}`, onclick: () => openDetail(e.id) }, thumb, body),
-    el("span", { class: "badge" }, e.ext === "PV3" ? "PV3" : e.format || e.ext),
+    el("span", { class: "badge" + (fmtOf(e) === "PES" ? "" : " badge-other"), title: fmtOf(e) === "PES" ? "Lisible par la Brother" : "Pas au format PES" }, e.ext || e.format),
     fav);
 }

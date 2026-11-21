@@ -61,8 +61,8 @@ fn bibliotheque_sans_doublons() {
 
     let mut lib = Library::open(dir.path()).unwrap();
     let rep = lib.import(&[src.path().to_path_buf(), fx("lot.zip")], |_, _, _| {});
-    assert_eq!(rep.added.len(), 3, "{rep:?}"); // fleur.pes, fleur.vp3, rosace.pes
-    assert_eq!(rep.duplicates.len(), 5, "{rep:?}");
+    assert_eq!(rep.added.len(), 2, "{rep:?}"); // fleur.pes et rosace.pes (le PES est préféré au VP3)
+    assert_eq!(rep.duplicates.len(), 6, "{rep:?}");
     assert_eq!(rep.ignored, 2); // notes.txt + lisezmoi.txt du zip
     assert!(rep.problems.is_empty());
     for e in lib.entries() {
@@ -88,9 +88,9 @@ fn bibliotheque_sans_doublons() {
     let out = tempfile::tempdir().unwrap();
     let p = lib.export(&id, out.path()).unwrap();
     assert_eq!(fs::read(p).unwrap(), fs::read(fx("fleur.pes")).unwrap());
-    assert_eq!(lib.backup(&out.path().join("sauvegarde.zip")).unwrap(), 3);
+    assert_eq!(lib.backup(&out.path().join("sauvegarde.zip")).unwrap(), 2);
     let mut lib = lib;
     lib.delete(&id).unwrap();
-    assert_eq!(lib.entries().len(), 2);
+    assert_eq!(lib.entries().len(), 1);
     assert!(dir.path().join("Corbeille/Fleur de Noël.pes").exists());
 }

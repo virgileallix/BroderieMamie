@@ -25,7 +25,8 @@ export function upsert(entry) {
 export function removeEntry(id) { state.entries = state.entries.filter(e => e.id !== id); emit(); }
 
 const isRecent = e => Date.now() - e.addedAt < RECENT_DAYS * 86400000;
-const fmtOf = e => (e.format === "PEC" ? "PES" : e.format) || e.ext;
+/** « PES » si la machine Brother sait le lire, sinon « AUTRES ». */
+export const fmtOf = e => (["PES", "PEC"].includes(e.format || e.ext) ? "PES" : "AUTRES");
 
 export function inView(e, view = state.view) {
   if (view === "fav") return e.favorite;
@@ -36,7 +37,7 @@ export function inView(e, view = state.view) {
 }
 
 export function counts() {
-  const c = { all: state.entries.length, fav: 0, recent: 0, "fmt:PES": 0, "fmt:VP3": 0 };
+  const c = { all: state.entries.length, fav: 0, recent: 0, "fmt:PES": 0, "fmt:AUTRES": 0 };
   for (const e of state.entries) {
     if (e.favorite) c.fav++;
     if (isRecent(e)) c.recent++;
@@ -83,8 +84,8 @@ export function visible() {
 export function viewTitle(view = state.view) {
   if (view === "fav") return "Mes favoris";
   if (view === "recent") return "Ajoutées récemment";
-  if (view === "fmt:PES") return "Broderies PES (Brother)";
-  if (view === "fmt:VP3") return "Broderies VP3 (Pfaff, Husqvarna)";
+  if (view === "fmt:PES") return "Pour ma Brother (PES)";
+  if (view === "fmt:AUTRES") return "Autres formats";
   if (view.startsWith("tag:")) return "« " + view.slice(4) + " »";
   return "Toutes mes broderies";
 }

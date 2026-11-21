@@ -5,7 +5,7 @@ const T = window.__TAURI__;
 
 function tauriApi() {
   const invoke = (cmd, args) => T.core.invoke(cmd, args);
-  const EXT = ["pes", "vp3", "pv3", "pec", "zip"];
+  const EXT = ["pes", "pec", "vp3", "pv3", "jef", "sew", "exp", "dst", "hus", "vip", "zip"];
   const asList = v => (v == null ? [] : Array.isArray(v) ? v : [v]);
   return {
     info: () => invoke("library_info"),
@@ -15,9 +15,10 @@ function tauriApi() {
     design: id => invoke("get_design", { id }),
     exportTo: (id, dir) => invoke("export_entry", { id, dir }),
     backup: dest => invoke("backup", { dest }),
+    dedupe: () => invoke("dedupe_library"),
     pickFiles: async () => asList(await T.dialog.open({
       multiple: true, title: "Choisir des broderies",
-      filters: [{ name: "Broderies (.pes, .vp3, .pv3, .zip)", extensions: EXT }],
+      filters: [{ name: "Broderies (.pes, .jef, .vp3, .hus…, .zip)", extensions: EXT }],
     })),
     pickFolder: async title => asList(await T.dialog.open({ directory: true, multiple: false, title })),
     saveZip: defaultPath => T.dialog.save({ title: "Enregistrer la sauvegarde", defaultPath, filters: [{ name: "Fichier zip", extensions: ["zip"] }] }),

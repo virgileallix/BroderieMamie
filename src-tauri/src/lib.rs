@@ -1,6 +1,6 @@
 //! Application de bureau : fait le lien entre l'interface (dossier `ui/`) et `broderie-core`.
 
-use broderie_core::library::{Entry, EntryUpdate, ImportReport, Library};
+use broderie_core::library::{DedupeReport, Entry, EntryUpdate, ImportReport, Library};
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -116,6 +116,14 @@ async fn get_design(lib: State<'_, Lib>, id: String) -> Result<DesignView, Strin
 }
 
 #[tauri::command]
+async fn dedupe_library(lib: State<'_, Lib>) -> Result<DedupeReport, String> {
+    let lib = lib.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || lock(&lib).dedupe())
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 fn export_entry(lib: State<Lib>, id: String, dir: String) -> Result<String, String> {
     lock(&lib).export(&id, &PathBuf::from(dir)).map(|p| p.to_string_lossy().into_owned())
 }
@@ -161,6 +169,7 @@ pub fn run() {
             delete_entry,
             get_design,
             export_entry,
+            dedupe_library,
             backup
         ])
         .run(tauri::generate_context!())
