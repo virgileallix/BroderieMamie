@@ -404,7 +404,7 @@ impl Library {
 
 fn collect(p: &Path, todo: &mut Vec<Source>, report: &mut ImportReport) {
     if p.is_dir() {
-        for e in walkdir::WalkDir::new(p).into_iter().filter_map(|e| e.ok()) {
+        for e in walkdir::WalkDir::new(p).sort_by_file_name().into_iter().filter_map(|e| e.ok()) {
             if e.file_type().is_file() {
                 collect(e.path(), todo, report);
             }

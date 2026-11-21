@@ -75,7 +75,8 @@ fn bibliotheque_sans_doublons() {
     assert!(rep2.added.is_empty() && rep2.duplicates.len() == 1);
 
     // renommer + mots-clés, puis rouvrir
-    let id = lib.entries().iter().find(|e| e.ext == "PES" && e.name == "fleur").unwrap().id.clone();
+    let fleur_hash = broderie_core::file_hash(&fs::read(fx("fleur.pes")).unwrap());
+    let id = lib.entries().iter().find(|e| e.file_hash == fleur_hash).unwrap().id.clone();
     let e = lib.update(&id, EntryUpdate { name: Some("Fleur de Noël".into()), tags: Some(vec!["Noël".into(), "noël".into(), " fleurs ".into()]), favorite: Some(true) }).unwrap();
     assert_eq!(e.file_name, "Fleur de Noël.pes");
     assert_eq!(e.tags, ["Noël", "fleurs"]);
