@@ -7,6 +7,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   tests:
     name: Tests du cœur (lecture des broderies)
@@ -58,7 +61,8 @@ jobs:
           path: |
             target/release/bundle/nsis/*.exe
             target/release/bundle/msi/*.msi
+          if-no-files-found: error
       - name: Vérifier les mises à jour automatiques
         if: env.HAS_UPDATER_KEY != 'true'
         run: echo "::warning::Secret TAURI_SIGNING_PRIVATE_KEY absent — pas de mise à jour automatique pour cette version."
-          if-no-files-found: error
+
