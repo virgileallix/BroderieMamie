@@ -38,13 +38,24 @@ jobs:
         with:
           workspaces: ". -> target"
       - run: npm install
+      # Clé qui signe les mises à jour automatiques (Settings › Secrets and variables › Actions).
+      # On retire les espaces / retours à la ligne collés par erreur autour des secrets.
+      - name: Préparer la clé de signature
+        if: env.HAS_UPDATER_KEY == 'true'
+        shell: pwsh
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          PW: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          $k = "$env:KEY".Trim(); $p = "$env:PW".Trim()
+          Write-Output "::add-mask::$k"
+          if ($p) { Write-Output "::add-mask::$p" }
+          "TAURI_SIGNING_PRIVATE_KEY=$k" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$p" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Construire l'application
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Clé qui signe les mises à jour automatiques (Settings › Secrets and variables › Actions).
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           # Sans la clé, l'installeur est quand même fabriqué, mais sans fichiers de mise à jour.
           args: ${{ env.HAS_UPDATER_KEY == 'true' && '--config src-tauri/tauri.updater.conf.json' || '' }}
